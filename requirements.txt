@@ -1,0 +1,12 @@
+# Versions used for the submitted run. scikit-learn must match exactly to load the saved .joblib models.
+scikit-learn==1.9.1
+pandas==3.0.6
+numpy==2.5.3
+scipy==1.18.1
+matplotlib==3.11.2
+seaborn==0.13.2
+unidecode==1.4.0
+joblib==1.6.0
+datasets==5.0.1
+pytest
+jupyter

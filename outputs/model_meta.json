@@ -1,0 +1,7 @@
+{
+  "model": "random_forest",
+  "threshold": 0.65,
+  "sklearn_version": "1.9.1",
+  "has_category_model": true,
+  "input": "pandas DataFrame with one column 'text'"
+}
