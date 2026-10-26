@@ -1,0 +1,4 @@
+# Install, then run `pip freeze` and pin the exact versions that pip chose.
+-r ../requirements.txt
+fastapi
+uvicorn
