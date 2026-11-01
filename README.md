@@ -216,3 +216,6 @@ Test set (6,401 prompts), each model at its own threshold chosen on the training
 - When several rules match, the category follows a fixed priority (extraction, override, role-play, social engineering, embedded).
   So a role-play jailbreak that also says "ignore your guidelines" is reported as `instruction_override`.
 - Attacks that use none of the known phrasings rely on the ML score alone.
+
+
+> **Side note:** Generative AI was used to add code comments and help with documentation (README, notebook), to understand and plot out data analysis, and for error checking due to time constraints. All code and information were reviewed with lecture material, edited and written by the team, and all results come from our own code and runs.
