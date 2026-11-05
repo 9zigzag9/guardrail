@@ -839,12 +839,20 @@ def explain(text, guardrail_pipe, threshold, category_pipe=None):
         explanation = f'Flagged as {category} because the text matched patterns for: {", ".join(reasons)}.'
     elif decision == 'Attack':
         explanation = f'Flagged as {category} by the overall model score, not a specific rule.'
+    elif reasons:
+        # Allowed, but a rule still fired: say so, so the highlight and the explanation agree.
+        explanation = (f'Allowed because the overall score ({proba:.0%}) is below the blocking threshold '
+                       f'({threshold:.0%}), although the text matched patterns for: {", ".join(reasons)}.')
     else:
         explanation = 'No injection patterns were matched.'
 
+    # The same spans as a list, for clients that render highlights themselves instead of parsing [[ ]].
+    span_list = [{'start': s, 'end': e, 'rules': sorted(names)} for s, e, names in merged]
+
     return {'text': text, 'decision': decision, 'attack_probability': round(proba, 4),
             'category': category, 'category_confidence': category_conf,
-            'highlighted_text': highlighted, 'matched_rules': reasons, 'explanation': explanation}
+            'highlighted_text': highlighted, 'spans': span_list,
+            'matched_rules': reasons, 'explanation': explanation}
 
 
 def threshold_for_targets(y, proba, min_accuracy=0.90, min_f1=0.85):
