@@ -1,23 +1,24 @@
 """FastAPI back end for the prompt injection guardrail.
 
 Run from the REPO ROOT:
-    uvicorn backend.main:app --reload --port 8000
+    uvicorn backend.main:app --port 8000 --no-server-header
 API documentation is served at http://localhost:8000/docs
 
-NOTE: this is still the BASELINE for the denial-of-service work. The /api/check endpoint is
-deliberately a plain `async def` that runs inference directly, so the "before" attack can be
-demonstrated. The git tag `baseline-before-defences` marks the version before any defences.
+Denial-of-service defence: inference runs in a small pool of worker processes (backend/inference.py),
+never on the event loop, and requests beyond what the pool can queue are refused with 503 at once.
+The git tag `baseline-before-defences` marks the version before this defence, for the before/after demo.
 """
+import asyncio
 import hashlib
-import io
 import json
 import logging
 import os
 import sys
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import joblib
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,10 +27,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))  # so the import below works whichever folder uvicorn is started from
+sys.path.insert(0, str(ROOT))  # so the imports below work whichever folder uvicorn is started from
 
-# The saved pipeline uses classes from this module, so import it before joblib.load.
-import prompt_injection_guardrail as pig  # noqa: E402
+from backend import inference  # noqa: E402  (the code that runs inside each worker process)
 
 log = logging.getLogger("guardrail")
 logging.basicConfig(level=logging.INFO)
@@ -45,17 +45,28 @@ MAX_TEXT_CHARS = int(os.getenv("MAX_TEXT_CHARS", "10000"))
 # Room for 10,000 characters as UTF-8 plus the JSON around them; anything bigger is refused unread.
 MAX_BODY_BYTES = int(os.getenv("MAX_BODY_BYTES", str(64 * 1024)))
 ENABLE_DOCS = os.getenv("ENABLE_DOCS", "true").lower() == "true"
+# Denial-of-service limits. Each worker is one CPU core running the model.
+INFERENCE_WORKERS = int(os.getenv("INFERENCE_WORKERS", "2"))
+# Requests allowed to wait for a free worker; any more are refused with 503 instead of piling up.
+MAX_QUEUED = int(os.getenv("MAX_QUEUED", "8"))
+# A check normally takes 4 to 70 ms, so 5 s only fires when the server is badly overloaded.
+INFERENCE_TIMEOUT_S = float(os.getenv("INFERENCE_TIMEOUT_S", "5"))
 
-state = {}  # holds the model, loaded once at startup
+state = {"in_flight": 0}  # model settings and the worker pool, set up once at startup
 
 
-def load_verified(name: str, expected: dict):
-    """Hash the file's bytes, refuse to load on mismatch, then load THOSE same bytes."""
+def read_verified(name: str, expected: dict) -> bytes:
+    """Hash the file's bytes and refuse them on mismatch. The workers load exactly these bytes."""
     data = (MODEL_DIR / name).read_bytes()
     digest = hashlib.sha256(data).hexdigest()
     if digest != expected.get(name):
         raise RuntimeError(f"Hash mismatch for {name}; refusing to load it.")
-    return joblib.load(io.BytesIO(data))
+    return data
+
+
+def start_pool() -> ProcessPoolExecutor:
+    return ProcessPoolExecutor(max_workers=INFERENCE_WORKERS, initializer=inference.init_worker,
+                               initargs=(state["model_bytes"], state["category_bytes"]))
 
 
 @asynccontextmanager
@@ -64,13 +75,52 @@ async def lifespan(app: FastAPI):
     meta = json.loads((MODEL_DIR / "model_meta.json").read_text())
     state["meta"] = meta
     state["threshold"] = meta["threshold"]
-    state["model"] = load_verified("guardrail_model.joblib", expected)
-    state["category_model"] = (
-        load_verified("category_model.joblib", expected) if meta.get("has_category_model") else None
+    state["model_bytes"] = read_verified("guardrail_model.joblib", expected)
+    state["category_bytes"] = (
+        read_verified("category_model.joblib", expected) if meta.get("has_category_model") else None
     )
-    log.info("Model loaded and hash verified (%s).", meta["model"])
+    state["pool"] = start_pool()
+    # Start every worker now, so each loads the model at startup rather than on a user's first request.
+    loop = asyncio.get_running_loop()
+    await asyncio.gather(*(loop.run_in_executor(state["pool"], inference.ready) for _ in range(INFERENCE_WORKERS)))
+    log.info("Model hash verified and loaded in %d worker processes (%s).", INFERENCE_WORKERS, meta["model"])
     yield
+    state["pool"].shutdown(wait=True, cancel_futures=True)
     state.clear()
+    state["in_flight"] = 0
+
+
+class ServerBusy(Exception):
+    """Raised when the request cannot be served right now; answered with 503 and Retry-After."""
+
+
+async def run_inference(text: str) -> dict:
+    """Admission control plus a time limit around one model call.
+
+    * At most INFERENCE_WORKERS checks run at once and MAX_QUEUED wait; the next one is refused
+      immediately, so a flood is answered quickly with 503 rather than freezing the server.
+    * The event loop only waits on the worker, so /api/health and other requests stay responsive.
+    """
+    if state["in_flight"] >= INFERENCE_WORKERS + MAX_QUEUED:
+        raise ServerBusy()
+    state["in_flight"] += 1
+    loop = asyncio.get_running_loop()
+    try:
+        future = loop.run_in_executor(state["pool"], inference.explain, text, state["threshold"])
+    except BrokenProcessPool:            # a worker died (for example killed by the OS): replace the pool
+        state["in_flight"] -= 1
+        state["pool"] = start_pool()
+        raise ServerBusy()
+    # The slot is freed when the worker really finishes, even if we stop waiting, so a slow
+    # request that timed out still counts against the limit until its worker is free again.
+    future.add_done_callback(lambda _: state.__setitem__("in_flight", state["in_flight"] - 1))
+    try:
+        return await asyncio.wait_for(asyncio.shield(future), timeout=INFERENCE_TIMEOUT_S)
+    except TimeoutError:
+        raise ServerBusy()
+    except BrokenProcessPool:
+        state["pool"] = start_pool()
+        raise ServerBusy()
 
 
 DESCRIPTION = """
@@ -81,6 +131,7 @@ Checks a prompt before it reaches an AI assistant and decides whether to **allow
 
 Every error, including unexpected ones, comes back in one format:
 `{"error": {"code": "...", "message": "..."}}`. The user's text is never echoed back in an error.
+When the server is at capacity it answers `503` with a `Retry-After` header instead of queueing forever.
 """
 
 app = FastAPI(
@@ -159,8 +210,11 @@ def error_example(code: str, message: str):
 
 
 # ---- Consistent error format: {"error": {"code": ..., "message": ...}} ----
-def err(status: int, code: str, message: str):
-    return JSONResponse(status_code=status, content={"error": {"code": code, "message": message}})
+def err(status: int, code: str, message: str, headers: dict | None = None):
+    return JSONResponse(status_code=status, content={"error": {"code": code, "message": message}}, headers=headers)
+
+
+BUSY_MESSAGE = "The server is busy. Please try again in a moment."
 
 
 TOO_LARGE = f"Request body must be under {MAX_BODY_BYTES:,} bytes."
@@ -227,9 +281,36 @@ class CatchAllErrors:
                 await err(500, "internal_error", "Something went wrong. Please try again.")(scope, receive, send)
 
 
-# Middleware runs outermost-last: CORS wraps everything, so every response, including errors, gets its header.
+class SecurityHeaders:
+    """Headers browsers use to limit what a response can do. None are set by FastAPI by default.
+
+    The API only returns JSON, so its pages may load nothing (default-src 'none') and may not be framed.
+    /docs is skipped for the content policy because Swagger UI needs its own scripts and styles."""
+
+    HEADERS = [(b"x-content-type-options", b"nosniff"), (b"x-frame-options", b"DENY"),
+               (b"referrer-policy", b"no-referrer"), (b"cache-control", b"no-store")]
+    CSP = (b"content-security-policy", b"default-src 'none'; frame-ancestors 'none'")
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        extra = self.HEADERS + ([] if scope["path"].startswith("/docs") else [self.CSP])
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                message["headers"] = list(message.get("headers", [])) + extra
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+
+# Middleware runs outermost-last: CORS wraps everything, so every response, including errors, gets its headers.
 app.add_middleware(CatchAllErrors)
 app.add_middleware(BodySizeLimit, max_bytes=MAX_BODY_BYTES)
+app.add_middleware(SecurityHeaders)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=FRONTEND_ORIGINS,          # only our own front end
@@ -269,6 +350,11 @@ async def http_handler(request: Request, exc: StarletteHTTPException):
     return err(exc.status_code, "http_error", messages.get(exc.status_code, "Request failed."))
 
 
+@app.exception_handler(ServerBusy)
+async def busy_handler(request: Request, exc: ServerBusy):
+    return err(503, "server_busy", BUSY_MESSAGE, headers={"Retry-After": "1"})
+
+
 @app.exception_handler(Exception)
 async def unexpected_handler(request: Request, exc: Exception):
     # Last resort for an error raised outside CatchAllErrors (for example inside a middleware).
@@ -303,9 +389,10 @@ def to_segments(text: str, spans: list[dict]) -> list[dict]:
                       "confidence, the attack category, the flagged spans and a one-sentence explanation.",
           responses={413: error_example("payload_too_large", TOO_LARGE),
                      422: error_example("invalid_input", f"Text must be 1 to {MAX_TEXT_CHARS:,} characters."),
-                     500: error_example("internal_error", "Something went wrong. Please try again.")})
+                     500: error_example("internal_error", "Something went wrong. Please try again."),
+                     503: error_example("server_busy", BUSY_MESSAGE)})
 async def check(req: CheckRequest):
-    r = pig.explain(req.text, state["model"], state["threshold"], state["category_model"])
+    r = await run_inference(req.text)
     return CheckResponse(
         decision=r["decision"], blocked=r["decision"] == "Attack", attack_probability=r["attack_probability"],
         threshold=state["threshold"], category=r["category"],

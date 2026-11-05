@@ -63,7 +63,9 @@ ZERO_WIDTH = ['​', '‌', '‍', '⁠', '﻿']
 LEET_MAP = {'0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '@': 'a', '$': 's'}
 # Personal data patterns. Emails and IP addresses are replaced by placeholders (anonymisation),
 # which also stops the model memorising one specific address.
-EMAIL_RE = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')
+# Bounded, possessive parts ({1,64}+) so a long run of letters with no '@' is rejected in one pass.
+# The unbounded version backtracked from every position: about 1 s of CPU for one 10,000-character token.
+EMAIL_RE = re.compile(r'[\w.+-]{1,64}+@[\w-]{1,63}+\.[\w.-]{1,253}')
 IP_RE = re.compile(r'\b\d{1,3}(?:\.\d{1,3}){3}\b')
 # Letters separated by spaces or dots, at least 4 letters long.
 SPACED_RE = re.compile(r'\b(?:[A-Za-z] ){3,}[A-Za-z]\b')      # i g n o r e
@@ -177,7 +179,9 @@ ROLE_RE = re.compile(
 # Prompt extraction: "reveal... system prompt", "give me... api key"
 EXTRACT_RE = re.compile(r'\b(reveal|show|print|repeat|output|leak|tell me|provide|give me)\b.{0,40}\b(system prompt|hidden|secret|password|api key|api token|credentials|instructions|initial prompt)\b')
 # Chat-format markers ("system:", "###", code fences, special tokens) that try to fake a new message.
-STRUCT_RE = re.compile(r'(system:|assistant:|user:|###|```|<\|.*?\|>|\[inst\]|<system>)', re.I)
+# Special tokens such as <|im_start|> are short, so the token body is capped at 40 characters. The old
+# <\|.*?\|> scanned to the end of the text for every '<|', which is quadratic on '<|<|<|...'.
+STRUCT_RE = re.compile(r'(system:|assistant:|user:|###|```|<\|.{0,40}?\|>|\[inst\]|<system>)', re.I)
 
 # Names of the numeric feature columns, in a fixed order. The pipeline selects these by name.
 NUM_COLS = ['len_raw', 'entropy_raw', 'punct_raw', 'digit_raw', 'non_ascii_ratio', 'zero_width',

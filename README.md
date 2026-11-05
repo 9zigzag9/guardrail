@@ -191,16 +191,26 @@ The model takes **raw text**: cleaning and feature building happen inside the pi
 From the repo root, with the environment from section 1 active (it installs `backend/requirements.txt` too):
 
 ```bash
-uvicorn backend.main:app --port 8000
+uvicorn backend.main:app --port 8000 --no-server-header
 ```
+
+`--no-server-header` stops uvicorn from announcing itself in every response.
 
 - API documentation with examples: http://localhost:8000/docs
 - `GET /api/health` reports the model and threshold; `POST /api/check` with `{"text": "..."}` checks one prompt.
 - Errors always come back as `{"error": {"code": "...", "message": "..."}}`.
 - The served model lives in `backend/model/`. At startup its SHA-256 hash is checked against `backend/model_hashes.json`
   and the server refuses to start on a mismatch.
-- Settings come from environment variables: `FRONTEND_ORIGINS` (allowed front-end origins, comma separated),
-  `MAX_TEXT_CHARS`, `MAX_BODY_BYTES`, `MODEL_DIR`, `ENABLE_DOCS`.
+- Settings come from environment variables, listed with their defaults in `backend/.env.example`:
+  `FRONTEND_ORIGINS`, `MAX_TEXT_CHARS`, `MAX_BODY_BYTES`, `INFERENCE_WORKERS`, `MAX_QUEUED`,
+  `INFERENCE_TIMEOUT_S`, `MODEL_DIR`, `ENABLE_DOCS`. No secrets are needed.
+- **Denial-of-service defence.** Inference runs in `INFERENCE_WORKERS` worker processes (`backend/inference.py`),
+  never on the event loop, so one slow request cannot stall the others. At most `INFERENCE_WORKERS + MAX_QUEUED`
+  checks are accepted at once; the next is refused immediately with `503` and `Retry-After: 1`. Two regular
+  expressions that backtracked quadratically were also bounded (worst crafted input: 1,176 ms before, about 70 ms after),
+  with identical features on all 32,003 dataset prompts. The tag `baseline-before-defences` is the version before.
+- Every response carries `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Cache-Control: no-store`
+  and a `Content-Security-Policy` (skipped on `/docs`, where Swagger UI needs its own scripts).
 
 After retraining, copy the three model files from `outputs/` into `backend/model/`, then refresh the hashes:
 
@@ -209,6 +219,10 @@ python backend/make_hashes.py
 ```
 
 API tests (no server needed): `pytest -q backend/test_api.py`
+
+Dependency audit: `pip-audit -r backend/requirements.txt` reports no known vulnerabilities. `npm audit` in `frontend/`
+reports 4 moderate findings, all in ESLint (`minimatch`). ESLint is a development-only tool that is never shipped
+to users, and the suggested `npm audit fix --force` would downgrade it with breaking changes, so it is left as is.
 
 ## Results of the submitted run
 

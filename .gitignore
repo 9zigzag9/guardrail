@@ -2,3 +2,7 @@ __pycache__
 .pytest_cache
 outputs/processed
 node_modules/
+# local secrets and settings, never committed
+.env
+.env.*
+!.env.example
