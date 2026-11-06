@@ -232,6 +232,25 @@ Dependency audit: `pip-audit -r backend/requirements.txt` reports no known vulne
 reports 4 moderate findings, all in ESLint (`minimatch`). ESLint is a development-only tool that is never shipped
 to users, and the suggested `npm audit fix --force` would downgrade it with breaking changes, so it is left as is.
 
+## 6. Run the web app (Assignment 3 front end)
+
+Needs Node.js 22 or later (`frontend/.nvmrc`). Start the back end first (section 5), then in a second terminal:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Open http://localhost:5173. `npm ci` installs the exact versions pinned in `frontend/package-lock.json`.
+The front end calls the back end at `http://localhost:8000` (change it with `VITE_API_URL`, see `frontend/.env.example`).
+More detail, including what each file does: `frontend/README.md`.
+
+- Input is checked beside the field before sending (not blank, at most 10,000 characters); the back end repeats every check.
+- User text is only ever rendered as text: matched words are marked using the API's `segments`, never `dangerouslySetInnerHTML`.
+- Each browser tab gets a random session ID (`crypto.randomUUID()`), sent as `X-Session-Id`, so its history stays separate.
+- `npm audit --omit=dev` reports 0 vulnerabilities in the packages shipped to users.
+
 ## Results of the submitted run
 
 Test set (6,401 prompts), each model at its own threshold chosen on the training data:
