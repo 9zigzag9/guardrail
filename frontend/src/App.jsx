@@ -1,6 +1,7 @@
 import { NavLink, Route, Routes } from 'react-router-dom'
 import AboutPage from './pages/AboutPage.jsx'
 import CheckPage from './pages/CheckPage.jsx'
+import DataPage from './pages/DataPage.jsx'
 import NotFoundPage from './pages/NotFoundPage.jsx'
 
 export default function App() {
@@ -15,12 +16,14 @@ export default function App() {
         <nav aria-label="Main">
           <NavLink to="/" end>Check a prompt</NavLink>
           <NavLink to="/about">About</NavLink>
+          <NavLink to="/data">Our data</NavLink>
         </nav>
       </header>
 
       <Routes>
         <Route path="/" element={<CheckPage />} />
         <Route path="/about" element={<AboutPage />} />
+        <Route path="/data" element={<DataPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
 
