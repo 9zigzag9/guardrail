@@ -8,9 +8,9 @@ export default function App() {
     <>
       <a className="skip-link" href="#main">Skip to content</a>
       <header className="site-header">
-        <NavLink to="/" className="brand" aria-label="Prompt Injection Guardrail, home">
-          <span className="brand-mark" aria-hidden="true">PI</span>
-          <span>Prompt Injection Guardrail</span>
+        <NavLink to="/" className="brand" aria-label="AI Prompt Injection Detector, home">
+          <span className="brand-dot" aria-hidden="true" />
+          <span>AI Prompt Injection Detector</span>
         </NavLink>
         <nav aria-label="Main">
           <NavLink to="/" end>Check a prompt</NavLink>

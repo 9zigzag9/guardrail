@@ -1,7 +1,12 @@
+import cat1 from '../assets/team/Catpic1.jpg'
+import cat2 from '../assets/team/Catpic2.jpg'
+import cat3 from '../assets/team/Catpic3.jpg'
+
+// Team photos are the cat pictures from the team's HTML prototype.
 const TEAM = [
-  { name: 'Zahara Rashini Amarasiri Gunawardana', email: '101233292@student.swin.edu.au' },
-  { name: 'Le Thuy Duong Nguyen', email: '105080751@student.swin.edu.au' },
-  { name: 'Tomas Agustin Cornejo Beltran', email: '105320237@student.swin.edu.au' },
+  { name: 'Zahara Rashini Amarasiri Gunawardana', email: '101233292@student.swin.edu.au', photo: cat1 },
+  { name: 'Le Thuy Duong Nguyen', email: '105080751@student.swin.edu.au', photo: cat2 },
+  { name: 'Tomas Agustin Cornejo Beltran', email: '105320237@student.swin.edu.au', photo: cat3 },
 ]
 
 const STEPS = [
@@ -15,8 +20,8 @@ export default function AboutPage() {
   return (
     <main id="main" className="page">
       <section className="intro">
-        <p className="eyebrow">About</p>
-        <h1>A guardrail for AI assistants</h1>
+        <p className="eyebrow">Who we are</p>
+        <h1 className="about-title">About our project</h1>
         <p className="subtitle">
           A prompt injection is a message that tries to make an AI assistant ignore its instructions, for example
           by asking it to reveal its hidden system prompt. This tool checks each prompt before it reaches the assistant.
@@ -55,7 +60,8 @@ export default function AboutPage() {
         <ul className="team">
           {TEAM.map((m) => (
             <li key={m.email}>
-              <span className="avatar" aria-hidden="true">{m.name.split(' ').map((w) => w[0]).slice(0, 2).join('')}</span>
+              <img className="team-photo" src={m.photo} alt={`Cat picture used as the team photo for ${m.name}`}
+                   width="400" height="400" loading="lazy" />
               <span className="team-name">{m.name}</span>
               <a href={`mailto:${m.email}`}>{m.email}</a>
             </li>
