@@ -7,6 +7,9 @@ API documentation is served at http://localhost:8000/docs
 Denial-of-service defence: inference runs in a small pool of worker processes (backend/inference.py),
 never on the event loop, and requests beyond what the pool can queue are refused with 503 at once.
 The git tag `baseline-before-defences` marks the version before this defence, for the before/after demo.
+
+SQL injection defence: the history of past checks (backend/history.py) only ever passes input to
+SQLite as query parameters, and every query is scoped to the caller's session.
 """
 import asyncio
 import hashlib
@@ -18,18 +21,20 @@ from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Path as PathParam, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # so the imports below work whichever folder uvicorn is started from
 
-from backend import inference  # noqa: E402  (the code that runs inside each worker process)
+from backend import history, inference  # noqa: E402  (inference runs inside each worker process)
 
 log = logging.getLogger("guardrail")
 logging.basicConfig(level=logging.INFO)
@@ -51,6 +56,12 @@ INFERENCE_WORKERS = int(os.getenv("INFERENCE_WORKERS", "2"))
 MAX_QUEUED = int(os.getenv("MAX_QUEUED", "8"))
 # A check normally takes 4 to 70 ms, so 5 s only fires when the server is badly overloaded.
 INFERENCE_TIMEOUT_S = float(os.getenv("INFERENCE_TIMEOUT_S", "5"))
+# History of past checks. The database file is created on first start and is never committed.
+HISTORY_DB = os.getenv("HISTORY_DB", str(ROOT / "backend" / "data" / "history.db"))
+# Newest checks kept per session; older ones are deleted, so no session can grow the database without limit.
+HISTORY_KEEP = int(os.getenv("HISTORY_KEEP", "200"))
+# crypto.randomUUID() in the browser makes exactly this shape (a version 4 UUID, lower case).
+SESSION_PATTERN = r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 
 state = {"in_flight": 0}  # model settings and the worker pool, set up once at startup
 
@@ -79,6 +90,8 @@ async def lifespan(app: FastAPI):
     state["category_bytes"] = (
         read_verified("category_model.joblib", expected) if meta.get("has_category_model") else None
     )
+    Path(HISTORY_DB).parent.mkdir(parents=True, exist_ok=True)
+    history.init_db(HISTORY_DB)
     state["pool"] = start_pool()
     # Start every worker now, so each loads the model at startup rather than on a user's first request.
     loop = asyncio.get_running_loop()
@@ -127,7 +140,14 @@ DESCRIPTION = """
 Checks a prompt before it reaches an AI assistant and decides whether to **allow** or **block** it.
 
 * `GET /api/health` tells the front end the server is up and which model and threshold it uses.
-* `POST /api/check` scores one prompt and explains the decision.
+* `POST /api/check` scores one prompt and explains the decision. With an `X-Session-Id` header it is
+  also saved to that session's history.
+* `GET /api/history` lists the session's past checks (filter by decision, search the text).
+* `GET /api/history/{check_id}` returns one past check from the same session.
+* `DELETE /api/history` clears the session's history.
+
+Sessions are not accounts: the front end creates a random UUID per browser tab and sends it as
+`X-Session-Id`. Every history query is scoped to that ID, so a session only ever sees its own checks.
 
 Every error, including unexpected ones, comes back in one format:
 `{"error": {"code": "...", "message": "..."}}`. The user's text is never echoed back in an error.
@@ -187,6 +207,36 @@ class CheckResponse(BaseModel):
                                                 "Use this to render highlights safely as text.")
     matched_rules: list[str] = Field(description="Every pattern that matched.")
     explanation: str = Field(description="One sentence explaining the decision.")
+    check_id: int | None = Field(None, description="ID of the saved history entry, or null when no session was sent.")
+
+
+class HistoryItem(BaseModel):
+    id: int
+    created_at: str = Field(description="When the check was made (UTC, ISO 8601).")
+    text: str = Field(description="The prompt exactly as it was checked. Plain text, never HTML.")
+    decision: str
+    blocked: bool
+    attack_probability: float
+    category: str | None
+
+
+class HistoryList(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"examples": [{"count": 1, "items": [{
+        "id": 7, "created_at": "2026-11-06T03:12:44+00:00", "text": "Ignore previous instructions",
+        "decision": "Attack", "blocked": True, "attack_probability": 0.9912, "category": "instruction_override"}]}]})
+    count: int
+    items: list[HistoryItem]
+
+
+class ClearResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"examples": [{"deleted": 12}]})
+    deleted: int = Field(description="How many of this session's checks were removed.")
+
+
+SESSION_DOC = "Random version 4 UUID identifying this browser session (crypto.randomUUID())."
+SessionId = Annotated[str, Header(alias="X-Session-Id", pattern=SESSION_PATTERN, description=SESSION_DOC)]
+OptionalSessionId = Annotated[str | None, Header(alias="X-Session-Id", pattern=SESSION_PATTERN,
+                                                 description=SESSION_DOC + " Optional: without it nothing is saved.")]
 
 
 class HealthResponse(BaseModel):
@@ -314,8 +364,8 @@ app.add_middleware(SecurityHeaders)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=FRONTEND_ORIGINS,          # only our own front end
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Content-Type", "X-Session-Id"],
 )
 
 
@@ -330,10 +380,18 @@ def validation_message(e: dict) -> str:
         return f"Unknown field '{field}'. Only 'text' is accepted."
     if kind == "string_type":
         return f"The field '{field}' must be a string."
-    if kind in ("string_too_short", "string_too_long"):
+    if kind in ("string_too_short", "string_too_long") and field == "text":
         return f"Text must be 1 to {MAX_TEXT_CHARS:,} characters."
+    if kind == "string_too_long":
+        return f"The '{field}' value is too long."
     if kind == "value_error" and field == "text":
         return "Text must contain at least one character that is not a space."
+    if kind == "string_pattern_mismatch" and field == "X-Session-Id":
+        return "X-Session-Id must be a version 4 UUID, as made by crypto.randomUUID()."
+    if kind == "literal_error":
+        return f"'{field}' must be 'Attack' or 'Safe'."
+    if kind in ("int_parsing", "greater_than_equal", "less_than_equal"):
+        return f"'{field}' must be a whole number in the allowed range."
     return "The request is not valid."
 
 
@@ -391,12 +449,54 @@ def to_segments(text: str, spans: list[dict]) -> list[dict]:
                      422: error_example("invalid_input", f"Text must be 1 to {MAX_TEXT_CHARS:,} characters."),
                      500: error_example("internal_error", "Something went wrong. Please try again."),
                      503: error_example("server_busy", BUSY_MESSAGE)})
-async def check(req: CheckRequest):
+async def check(req: CheckRequest, session_id: OptionalSessionId = None):
     r = await run_inference(req.text)
+    check_id = None
+    if session_id:
+        check_id = await run_in_threadpool(history.add_check, HISTORY_DB, session_id, req.text, r["decision"],
+                                           r["attack_probability"], r["category"], HISTORY_KEEP)
     return CheckResponse(
+        check_id=check_id,
         decision=r["decision"], blocked=r["decision"] == "Attack", attack_probability=r["attack_probability"],
         threshold=state["threshold"], category=r["category"],
         category_confidence=r["category_confidence"], highlighted_text=r["highlighted_text"],
         segments=to_segments(req.text, r["spans"]),
         matched_rules=r["matched_rules"], explanation=r["explanation"],
     )
+
+
+def to_item(row: dict) -> dict:
+    return {**row, "blocked": row["decision"] == "Attack"}
+
+
+# History endpoints are plain `def`: FastAPI runs them in a thread, so a database call never blocks the event loop.
+@app.get("/api/history", response_model=HistoryList, tags=["history"],
+         summary="List this session's past checks",
+         description="Newest first. Optionally keep only one decision, or only checks whose text contains `search`. "
+                     "Both filters reach the database as parameters, never pasted into the SQL.",
+         responses={422: error_example("invalid_input", "X-Session-Id must be a version 4 UUID, as made by crypto.randomUUID().")})
+def list_history(session_id: SessionId,
+                 decision: Annotated[Literal["Attack", "Safe"] | None, Query(description="Only this decision.")] = None,
+                 search: Annotated[str | None, Query(max_length=200, description="Only checks whose text contains this (case-insensitive).")] = None,
+                 limit: Annotated[int, Query(ge=1, le=HISTORY_KEEP, description="How many to return.")] = 50):
+    items = [to_item(r) for r in history.list_checks(HISTORY_DB, session_id, decision, search, limit)]
+    return {"count": len(items), "items": items}
+
+
+@app.get("/api/history/{check_id}", response_model=HistoryItem, tags=["history"],
+         summary="Get one past check",
+         description="Returns the check only if it belongs to the calling session. Any other ID answers 404, "
+                     "so IDs from other sessions cannot be read or even confirmed to exist.",
+         responses={404: error_example("http_error", "Resource not found.")})
+def get_history_item(session_id: SessionId, check_id: Annotated[int, PathParam(ge=1)]):
+    row = history.get_check(HISTORY_DB, session_id, check_id)
+    if row is None:
+        raise HTTPException(status_code=404)
+    return to_item(row)
+
+
+@app.delete("/api/history", response_model=ClearResponse, tags=["history"],
+            summary="Clear this session's history",
+            description="Deletes every check saved under this X-Session-Id, and nothing else.")
+def clear_history(session_id: SessionId):
+    return {"deleted": history.clear_checks(HISTORY_DB, session_id)}

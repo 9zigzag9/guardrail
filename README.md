@@ -197,18 +197,26 @@ uvicorn backend.main:app --port 8000 --no-server-header
 `--no-server-header` stops uvicorn from announcing itself in every response.
 
 - API documentation with examples: http://localhost:8000/docs
-- `GET /api/health` reports the model and threshold; `POST /api/check` with `{"text": "..."}` checks one prompt.
+- `GET /api/health` reports the model and threshold; `POST /api/check` with `{"text": "..."}` checks one prompt;
+  `GET`/`DELETE /api/history` read and clear the session's past checks.
 - Errors always come back as `{"error": {"code": "...", "message": "..."}}`.
 - The served model lives in `backend/model/`. At startup its SHA-256 hash is checked against `backend/model_hashes.json`
   and the server refuses to start on a mismatch.
 - Settings come from environment variables, listed with their defaults in `backend/.env.example`:
   `FRONTEND_ORIGINS`, `MAX_TEXT_CHARS`, `MAX_BODY_BYTES`, `INFERENCE_WORKERS`, `MAX_QUEUED`,
-  `INFERENCE_TIMEOUT_S`, `MODEL_DIR`, `ENABLE_DOCS`. No secrets are needed.
+  `INFERENCE_TIMEOUT_S`, `HISTORY_DB`, `HISTORY_KEEP`, `MODEL_DIR`, `ENABLE_DOCS`. No secrets are needed.
 - **Denial-of-service defence.** Inference runs in `INFERENCE_WORKERS` worker processes (`backend/inference.py`),
   never on the event loop, so one slow request cannot stall the others. At most `INFERENCE_WORKERS + MAX_QUEUED`
   checks are accepted at once; the next is refused immediately with `503` and `Retry-After: 1`. Two regular
   expressions that backtracked quadratically were also bounded (worst crafted input: 1,176 ms before, about 70 ms after),
   with identical features on all 32,003 dataset prompts. The tag `baseline-before-defences` is the version before.
+- **Check history and the SQL injection defence.** With an `X-Session-Id` header (a random UUID the front end makes
+  per browser tab), each check is saved to SQLite (`backend/history.py`, database `backend/data/history.db`, never
+  committed). `GET /api/history` lists and searches the session's checks, `GET /api/history/{id}` returns one, and
+  `DELETE /api/history` clears them. Every value reaches the database as a `?` parameter and the SQL text is fixed,
+  so input such as `%' OR 1=1 --` is searched for literally; LIKE wildcards in a search are escaped; every query is
+  scoped to the session, so another session's IDs answer `404`; each session keeps at most `HISTORY_KEEP` checks.
+  Demo of the attack with and without the defence: `python demo_requests/sqli_demo.py` (API running).
 - Every response carries `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Cache-Control: no-store`
   and a `Content-Security-Policy` (skipped on `/docs`, where Swagger UI needs its own scripts).
 

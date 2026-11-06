@@ -6,3 +6,6 @@ node_modules/
 .env
 .env.*
 !.env.example
+
+# runtime data (history of checks), never committed
+backend/data/
