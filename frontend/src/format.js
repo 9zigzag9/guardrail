@@ -2,6 +2,9 @@
 
 export const percent = (p) => `${(p * 100).toFixed(1)}%`
 
+const MODEL_NAMES = { logistic: 'Logistic regression', linear_svm: 'Linear SVM (calibrated)', random_forest: 'Random forest' }
+export const modelName = (m) => MODEL_NAMES[m] ?? m
+
 const RULE_LABELS = {
   instruction_override: 'Instruction override',
   prompt_extraction: 'Prompt extraction',

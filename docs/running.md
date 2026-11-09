@@ -175,12 +175,20 @@ The **Our data** page reads these files from `outputs/` each time it loads, so i
 
 | File | Shown on the page as |
 |---|---|
-| `model_comparison.csv` | Test results, the confusion grid and the model comparison table |
+| `model_comparison.csv` | The model comparison table and the AUC scores |
+| `test_scores.csv` | The threshold explorer: the slider, the live confusion matrix, and the ROC and precision-recall curves |
 | `dataset_summary.json` | Dataset size, prompts per source and attack types |
+| `processed/dataset_clean.csv` | The prompt length chart |
+| `kmeans_k_selection.csv` | The attack groups chart |
 | `explanation_demo.csv` | Example outputs |
-| `confusion_matrices.png`, `roc_pr_curves.png`, `eda_balance_length.png`, `kmeans_k_selection.png` | Charts from the training run |
+| `eda_features_vs_label.png`, `eda_correlation.png`, `attack_clusters_2d.png` | More charts from the training run (shown as images) |
+| `evasion_before.json`, `evasion_after_table.json`, `evasion_after.json` | The disguised attacks chart (written by the evasion demo in section 8, not by training) |
 
 The response time card is measured live from the checks the server has answered since it started.
+
+**While a run is in progress** the training script rewrites these files one by one over 20 to 30 minutes. It writes `run_complete.json` last, and until it does, the page keeps showing the previous complete results (saved in `backend/data/`, so they survive a restart) with a notice. The page checks again every 30 seconds and switches to the new results by itself when the run finishes.
+
+Every chart on the page (and on the Check a prompt page) has **Download PNG** and **Download CSV** buttons. The PNG is the chart as it looks at that moment, with its title and a legend; the CSV is the numbers behind it. Prompts in a CSV that start with `=`, `+`, `-` or `@` are saved with a leading `'`, so a spreadsheet shows them as text instead of running them as a formula.
 
 ### 7.3 Deploy the new model
 

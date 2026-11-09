@@ -33,8 +33,8 @@ The coloured tags show where each marked defence sits. The editable source is [d
 | `/api/history` | GET | List or search this session's past checks |
 | `/api/history/{id}` | GET | One past check, only if it belongs to this session |
 | `/api/history` | DELETE | Clear this session's history |
-| `/api/model-stats` | GET | Figures for the Our data page, read live from `outputs/` |
-| `/api/outputs/{name}` | GET | One training chart (fixed list of names only) |
+| `/api/model-stats` | GET | Figures and chart data for the Our data page, read live from `outputs/` |
+| `/api/outputs/{name}` | GET | One training chart image (a fixed list of three names only) |
 
 ## API conventions
 

@@ -88,9 +88,11 @@ The deployed model's accuracy is 95.4% (3,625 of 3,670 safe prompts allowed and 
 |---|---|
 | `guardrail_model.joblib`, `category_model.joblib`, `model_meta.json` | Written here by training. The served copies live in `backend/model/` (see [running.md, section 7.3](running.md#73-deploy-the-new-model)) |
 | `model_comparison.csv`, `roc_pr_curves.png`, `confusion_matrices.png` | Final test-set comparison |
+| `test_scores.csv` | Every model's attack probability for each test prompt; the website draws its curves and threshold explorer from it |
 | `tuning_logistic.csv`, `tuning_linear_svm.csv`, `tuning_random_forest.csv` | Every hyperparameter combination tried, with its cross-validation scores |
 | `eda_balance_length.png`, `eda_features_vs_label.png`, `eda_correlation.png` | EDA charts |
-| `kmeans_k_selection.png`, `attack_clusters_2d.png` | Attack clustering |
+| `kmeans_k_selection.csv`, `kmeans_k_selection.png`, `attack_clusters_2d.png` | Attack clustering |
+| `run_complete.json` | Written last, when a training run has finished; the website waits for it before showing a new run |
 | `explanation_demo.csv` | `explain()` output for the PMP scenarios |
 | `dataset_summary.json` | Dataset size, prompts per source and attack types, for the website's Our data page |
 

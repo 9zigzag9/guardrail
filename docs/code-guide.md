@@ -24,7 +24,7 @@
 | `main.py` | The API: endpoints, request and response models, middleware (CORS, security headers, body size limit, error format) and admission control |
 | `inference.py` | The worker processes that run the model, so a slow check never blocks other requests |
 | `history.py` | The SQLite history of past checks, using parameterised queries only |
-| `model_stats.py` | Builds the figures for the Our data page from `outputs/` |
+| `model_stats.py` | Builds the figures and chart data for the Our data page from `outputs/` and the dataset |
 | `make_hashes.py` | Records the SHA-256 hashes of the model files after a retrain |
 | `model/` | The served model files and `model_meta.json` (model name and threshold) |
 | `model_hashes.json` | The expected hashes, checked at startup |
@@ -60,8 +60,9 @@ The back end address defaults to `http://localhost:8000`. To change it, copy `.e
 | `src/api.js` | The only code that calls the back end: session ID, time limit, readable errors |
 | `src/validation.js` | Checks a prompt before sending (the back end repeats every check) |
 | `src/format.js` | Turns API values into readable labels |
+| `src/exportChart.js` | Saves a chart as PNG or its data as CSV, in the browser (CSV cells that a spreadsheet would run as a formula are neutralised) |
 | `src/pages/CheckPage.jsx` | Main page: form, result, charts, history, and the loading, success and error states |
-| `src/pages/DataPage.jsx` | Our data: dataset, attack types, test results, model comparison, examples and training charts, loaded live from `GET /api/model-stats` |
+| `src/pages/DataPage.jsx` | Our data: dataset, attack types, test results, model comparison, examples and the training charts, loaded live from `GET /api/model-stats` |
 | `src/pages/AboutPage.jsx` | About the project and the team |
 | `src/pages/NotFoundPage.jsx` | Page for addresses that do not exist |
 | `src/components/PromptForm.jsx` | The prompt box, with checks beside the field before sending |
@@ -69,6 +70,11 @@ The back end address defaults to `http://localhost:8000`. To change it, copy `.e
 | `src/components/HighlightedText.jsx` | Marks the matched words using the API's `segments`, as plain text (never HTML) |
 | `src/components/SessionChart.jsx` | Chart 1: risk of every check this session; select a dot to see that check |
 | `src/components/CategoryChart.jsx` | Chart 2: blocked checks by attack type; select a bar to filter the list |
+| `src/components/ThresholdExplorer.jsx` | Our data: a threshold slider with a live confusion matrix, and ROC and precision-recall curves for every model; select a point to use that threshold |
+| `src/components/LengthChart.jsx` | Our data: prompt length of safe prompts and attacks, as counts or as a share of each class |
+| `src/components/ClusterChart.jsx` | Our data: k-means scores for each number of attack groups tried |
+| `src/components/EvasionChart.jsx` | Our data: how many disguised attacks got through, by attacker request budget, for each version of the guardrail |
+| `src/components/ExportButtons.jsx` | The Download PNG and Download CSV buttons on every chart |
 | `src/components/CheckDetail.jsx` | Details of the check selected in a chart or the list |
 | `src/components/HistoryPanel.jsx` | Searchable list of past checks; the keyboard route to everything the charts do |
 | `src/components/ErrorBoundary.jsx` | Fallback page for unexpected errors, so the screen is never blank |

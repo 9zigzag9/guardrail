@@ -1,15 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api, figureUrl } from '../api.js'
-import { percent, ruleLabel } from '../format.js'
+import ClusterChart from '../components/ClusterChart.jsx'
+import EvasionChart from '../components/EvasionChart.jsx'
+import ExportButtons from '../components/ExportButtons.jsx'
+import LengthChart from '../components/LengthChart.jsx'
+import ThresholdExplorer from '../components/ThresholdExplorer.jsx'
+import { modelName, percent, ruleLabel } from '../format.js'
 
-// Every figure on this page comes from GET /api/model-stats, which the back end reads from the training
+// Every figure and chart on this page comes from GET /api/model-stats, which the back end reads from the training
 // outputs (outputs/). Re-running the training script changes the page; nothing here is typed in by hand.
 
 const COLOURS = { safe: '#0b7f74', attack: '#c23a32' }
-const MODEL_NAMES = { logistic: 'Logistic regression', linear_svm: 'Linear SVM (calibrated)', random_forest: 'Random forest' }
 const n = (x) => (x ?? 0).toLocaleString()
-const modelName = (m) => MODEL_NAMES[m] ?? m
 const formatDate = (unix) =>
   new Date(unix * 1000).toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
@@ -51,15 +54,19 @@ function DatasetPanels({ ds }) {
   const sources = ds.sources.map((s) => ({ ...s, short: s.name.split('/')[0] }))
   const types = ds.attack_types.filter((a) => a.category !== 'unclassified')
   const unclassified = ds.attack_types.find((a) => a.category === 'unclassified')?.count ?? 0
+  const sourcesRef = useRef(null)
   return (
     <div className="charts-grid">
-      <figure className="panel chart-panel">
+      <figure className="panel chart-panel" ref={sourcesRef}>
         <figcaption>
           <h2 className="chart-title">Where the prompts come from</h2>
           <p className="chart-sub">
             {n(ds.safe)} safe prompts and {n(ds.attacks)} attacks ({percent(ds.attacks / ds.rows)} attacks).
           </p>
         </figcaption>
+        <ExportButtons chartRef={sourcesRef} name="prompt-sources" title="Where the prompts come from"
+                       legend={[{ name: 'Safe', colour: COLOURS.safe }, { name: 'Attack', colour: COLOURS.attack }]}
+                       rows={sources.map((s) => ({ dataset: s.name, safe: s.safe, attack: s.attacks, total: s.total }))} />
         <div className="chart-box" aria-hidden="true">
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={sources} margin={{ top: 8, right: 12, bottom: 8, left: 8 }}>
@@ -95,6 +102,10 @@ function DatasetPanels({ ds }) {
               : 'This training run did not record attack types.'}
           </p>
         </figcaption>
+        {types.length > 0 && (
+          <ExportButtons name="attack-types" title="Types of attack in the data"
+                         rows={ds.attack_types.map((a) => ({ attack_type: ruleLabel(a.category), prompts: a.count }))} />
+        )}
         {types.length > 0 && (
           <ul className="type-bars">
             {types.map((a) => (
@@ -211,7 +222,7 @@ function Examples({ rows }) {
 function Figures({ figures }) {
   return (
     <section className="panel">
-      <h2 className="chart-title">Charts from the training run</h2>
+      <h2 className="chart-title">More charts from the training run</h2>
       <p className="chart-sub">Made by the training script and served from the outputs folder. Select a chart to open it full size.</p>
       <div className="figure-grid">
         {figures.map((f) => (
@@ -219,7 +230,11 @@ function Figures({ figures }) {
             <a href={figureUrl(f)} target="_blank" rel="noopener noreferrer">
               <img src={figureUrl(f)} alt={`${f.title}. ${f.text}`} loading="lazy" />
             </a>
-            <figcaption><strong>{f.title}</strong><span>{f.text}</span></figcaption>
+            <figcaption>
+              <strong>{f.title}</strong>
+              <span>{f.text}</span>
+              <ExportButtons imageUrl={figureUrl(f)} name={f.name.replace(/\.png$/, '')} title={f.title} />
+            </figcaption>
           </figure>
         ))}
       </div>
@@ -250,6 +265,15 @@ export default function DataPage() {
   }, [fetchStats])
 
   const { stats } = load
+  const training = stats?.training_in_progress
+
+  // While a new training run is writing its outputs, check every 30 seconds, so the page switches to the
+  // new results by itself as soon as the run finishes.
+  useEffect(() => {
+    if (!training) return undefined
+    const timer = setInterval(fetchStats, 30000)
+    return () => clearInterval(timer)
+  }, [training, fetchStats])
   const socialCount = stats?.dataset?.attack_types.find((a) => a.category === 'social_engineering')?.count
 
   return (
@@ -295,7 +319,13 @@ export default function DataPage() {
 
       {stats && (
         <>
-          {!stats.in_sync && (
+          {training && (
+            <p className="panel notice" role="status">
+              A new training run is in progress. These are the results of the previous complete run; the page switches to
+              the new results by itself when the run finishes.
+            </p>
+          )}
+          {!stats.in_sync && !training && (
             <p className="panel notice" role="note">
               These figures come from a newer training run than the model currently answering checks. To use the new
               model, copy it into <code>backend/model</code>, run <code>python backend/make_hashes.py</code> and restart
@@ -305,8 +335,17 @@ export default function DataPage() {
           {load.error && <p className="inline-error" role="alert">Could not refresh: {load.error.message}</p>}
           <StatCards stats={stats} />
           {stats.dataset && <DatasetPanels ds={stats.dataset} />}
-          {stats.test && <TestResults t={stats.test} threshold={stats.threshold} testRows={stats.dataset?.test_rows} />}
+          {stats.curves.length > 0
+            ? <ThresholdExplorer key={stats.trained_at} curves={stats.curves} deployed={stats.model} comparison={stats.comparison} />
+            : stats.test && <TestResults t={stats.test} threshold={stats.threshold} testRows={stats.dataset?.test_rows} />}
           <Comparison rows={stats.comparison} deployed={stats.model} />
+          {(stats.lengths || stats.clusters) && (
+            <div className="charts-grid charts-even">
+              {stats.lengths && <LengthChart bins={stats.lengths} />}
+              {stats.clusters && <ClusterChart clusters={stats.clusters} />}
+            </div>
+          )}
+          {stats.evasion && <EvasionChart evasion={stats.evasion} />}
           {stats.examples.length > 0 && <Examples rows={stats.examples} />}
           {stats.figures.length > 0 && <Figures figures={stats.figures} />}
           <section className="panel">

@@ -68,6 +68,9 @@ HISTORY_KEEP = int(os.getenv("HISTORY_KEEP", "200"))
 OUTPUTS_DIR = Path(os.getenv("OUTPUTS_DIR", ROOT / "outputs"))
 # Processed dataset, used only when outputs/dataset_summary.json is missing (runs made before it existed).
 DATA_DIRS = [OUTPUTS_DIR / "processed", ROOT / "data"]
+# The last complete Our data figures, kept next to the history database so they survive a restart
+# and are shown while a new training run is still writing its outputs.
+STATS_SNAPSHOT = Path(HISTORY_DB).parent / "model_stats_snapshot.json"
 # crypto.randomUUID() in the browser makes exactly this shape (a version 4 UUID, lower case).
 SESSION_PATTERN = r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 
@@ -316,6 +319,75 @@ class ExampleOutput(BaseModel):
     category: str | None
 
 
+class ThresholdCount(BaseModel):
+    t: float = Field(description="Threshold: a prompt is blocked when its attack probability is at least this.")
+    tp: int = Field(description="Test attacks blocked at this threshold.")
+    fp: int = Field(description="Safe test prompts blocked at this threshold.")
+
+
+class ModelCurves(BaseModel):
+    model: str
+    chosen_threshold: float
+    positives: int = Field(description="Attacks in the test set.")
+    negatives: int = Field(description="Safe prompts in the test set.")
+    grid: list[ThresholdCount] = Field(description="Every 0.01 step plus the chosen threshold. The page draws the "
+                                                   "ROC and precision-recall curves and the threshold slider from it.")
+
+
+class LengthBin(BaseModel):
+    label: str = Field(description="Prompt length range in characters.")
+    safe: int
+    attack: int
+
+
+class ClusterRow(BaseModel):
+    k: int
+    inertia: float
+    silhouette: float
+
+
+class Clusters(BaseModel):
+    rows: list[ClusterRow]
+    best_k: int = Field(description="The number of clusters with the highest silhouette score.")
+
+
+class EvasionFinal(BaseModel):
+    got_through: int = Field(description="Blocked attacks the attacker got through within the request budget.")
+    prompts: int
+    rate: float
+    low: float = Field(description="95% confidence interval, lower end.")
+    high: float = Field(description="95% confidence interval, upper end.")
+
+
+class EvasionAttack(BaseModel):
+    name: str
+    title: str
+    curve: list[dict[str, float]] = Field(description="For each request budget, the % of blocked attacks that got "
+                                                      "through, per measured version.")
+    final: dict[str, EvasionFinal] = Field(description="Result at the full request budget, per measured version.")
+
+
+class EvasionRun(BaseModel):
+    name: str
+    title: str
+
+
+class EvasionCost(BaseModel):
+    run: str
+    safe_blocked: int
+    safe: int
+    median_ms: float
+
+
+class Evasion(BaseModel):
+    budget: int = Field(description="Most requests the adaptive attacker could send per prompt.")
+    runs: list[EvasionRun]
+    attacks: list[EvasionAttack]
+    random_swaps: list[dict[str, float]] = Field(description="Average evasion rate when this share of letters is "
+                                                             "swapped at random, per measured version.")
+    cost: list[EvasionCost]
+
+
 class Figure(BaseModel):
     name: str = Field(description="Fetch the image from /api/outputs/{name}.")
     title: str
@@ -334,15 +406,21 @@ class ModelStatsResponse(BaseModel):
     threshold: float
     trained_at: int = Field(description="When the training outputs were written (Unix time).")
     in_sync: bool = Field(description="False when the training outputs are from a different model than the deployed one.")
+    training_in_progress: bool = Field(description="True while a new training run is writing its outputs. The figures "
+                                                   "are then the previous complete run's, until the new run finishes.")
     dataset: DatasetStats | None
     test: TestResults | None
     comparison: list[ModelRow]
     examples: list[ExampleOutput]
-    figures: list[Figure]
+    curves: list[ModelCurves] = Field(description="Empty for training runs made before test_scores.csv existed.")
+    lengths: list[LengthBin] | None
+    clusters: Clusters | None
+    evasion: Evasion | None = Field(description="Null until the evasion measurement has been run.")
+    figures: list[Figure] = Field(description="Training charts shown as images.")
     latency: Latency
 
     model_config = ConfigDict(json_schema_extra={"examples": [{
-        "model": "logistic", "threshold": 0.7756, "trained_at": 1793952780, "in_sync": True,
+        "model": "logistic", "threshold": 0.7756, "trained_at": 1793952780, "in_sync": True, "training_in_progress": False,
         "dataset": {"rows": 32003, "attacks": 13654, "safe": 18349,
                     "sources": [{"name": "deepset/prompt-injections", "total": 656, "attacks": 258, "safe": 398}],
                     "attack_types": [{"category": "instruction_override", "count": 875}],
@@ -353,8 +431,18 @@ class ModelStatsResponse(BaseModel):
                         "roc_auc": 0.9922, "pr_auc": 0.9903, "fp": 45, "fn": 252}],
         "examples": [{"scenario": "Scenario 1 (PMP): benign", "text": "Translate the following business memo into Japanese.",
                       "decision": "Safe", "probability": 0.1579, "category": None}],
-        "figures": [{"name": "confusion_matrices.png", "title": "Confusion matrices",
-                     "text": "Test-set results for each model at its chosen threshold.", "version": 1793952780}],
+        "curves": [{"model": "logistic", "chosen_threshold": 0.7756, "positives": 2731, "negatives": 3670,
+                    "grid": [{"t": 0.5, "tp": 2577, "fp": 121}, {"t": 0.7756, "tp": 2479, "fp": 45}]}],
+        "lengths": [{"label": "0-24", "safe": 812, "attack": 118}, {"label": "25-49", "safe": 2040, "attack": 1210}],
+        "clusters": {"rows": [{"k": 2, "inertia": 9120.4, "silhouette": 0.071}], "best_k": 2},
+        "evasion": {"budget": 100, "runs": [{"name": "before", "title": "Before"}, {"name": "after", "title": "Final defence"}],
+                    "attacks": [{"name": "lookalikes", "title": "Cyrillic and Greek look-alikes",
+                                 "curve": [{"requests": 100, "before": 44.0, "after": 0.0}],
+                                 "final": {"before": {"got_through": 132, "prompts": 300, "rate": 0.44, "low": 0.386, "high": 0.496}}}],
+                    "random_swaps": [{"share_swapped": 1.0, "before": 0.0614, "after": 0.0}],
+                    "cost": [{"run": "before", "safe_blocked": 46, "safe": 3670, "median_ms": 20.7}]},
+        "figures": [{"name": "eda_correlation.png", "title": "How the features relate to each other",
+                     "text": "Correlation between the engineered features.", "version": 1793952780}],
         "latency": {"checks": 30, "median_ms": 10.1, "p95_ms": 13.6},
     }]})
 
@@ -620,11 +708,12 @@ def clear_history(session_id: SessionId):
 @app.get("/api/model-stats", response_model=ModelStatsResponse, tags=["model"],
          summary="Dataset and model figures for the Our data page",
          description="Read from the training outputs (outputs/) each time they change, so a new training run "
-                     "updates the page without rebuilding the front end. `latency` is measured live from recent checks.",
+                     "updates the page without rebuilding the front end. `curves`, `lengths` and `clusters` feed the "
+                     "interactive charts. `latency` is measured live from recent checks.",
          responses={503: error_example("stats_unavailable", "Model figures are not available yet. Run the training script.")})
 def get_model_stats():
     try:
-        stats = model_stats.build(OUTPUTS_DIR, DATA_DIRS, state["meta"])
+        stats = model_stats.build(OUTPUTS_DIR, DATA_DIRS, state["meta"], STATS_SNAPSHOT)
     except FileNotFoundError as e:
         log.warning("Model stats unavailable: %s", e)
         return err(503, "stats_unavailable", "Model figures are not available yet. Run the training script.")
@@ -637,12 +726,12 @@ def get_model_stats():
 
 @app.get("/api/outputs/{name}", tags=["model"], response_class=FileResponse,
          summary="One chart from the training outputs",
-         description="Only the charts listed by /api/model-stats can be fetched; any other name answers 404.",
+         description="Only the charts listed in `figures` by /api/model-stats can be fetched; any other name answers 404.",
          responses={200: {"description": "The chart as a PNG image.",
                           "content": {"image/png": {"schema": {"type": "string", "format": "binary"}}}},
                     404: error_example("http_error", "Resource not found.")})
 def get_output_figure(name: Annotated[str, PathParam(description="A chart name listed by /api/model-stats.",
-                                                    examples=["confusion_matrices.png"])]):
+                                                    examples=["eda_correlation.png"])]):
     # The name must be one of the fixed chart names, so no other file (or ../ path) can be reached.
     path = OUTPUTS_DIR / name
     if name not in model_stats.FIGURES or not path.is_file():

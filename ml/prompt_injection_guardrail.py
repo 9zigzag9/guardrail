@@ -491,7 +491,8 @@ def evaluate(name, pipe, X, y, threshold):
     # honest one when classes are imbalanced.
     print(f'ROC-AUC {roc_auc_score(y, proba):.3f}   PR-AUC {average_precision_score(y, proba):.3f}')
     print(f'False positives: {fp} safe prompts blocked.  False negatives: {fn} attacks let through.')
-    return proba, {'model': name, 'threshold': round(threshold, 3), 'precision': tp / max(1, tp + fp),
+    # The threshold is saved unrounded, so the website can reproduce these exact counts from test_scores.csv.
+    return proba, {'model': name, 'threshold': threshold, 'precision': tp / max(1, tp + fp),
                    'recall': tp / max(1, tp + fn), 'roc_auc': roc_auc_score(y, proba),
                    'pr_auc': average_precision_score(y, proba), 'FP': fp, 'FN': fn}
 
@@ -728,6 +729,7 @@ def cluster_attack_class(attack_texts, outdir, k_range=range(2, 10), min_samples
         km = KMeans(k, n_init=10, random_state=seed).fit(Z)
         rows.append({'k': k, 'inertia': km.inertia_, 'silhouette': silhouette_score(Z, km.labels_)})
     tbl = pd.DataFrame(rows)
+    tbl.to_csv(os.path.join(outdir, 'kmeans_k_selection.csv'), index=False)  # drawn on the website
     print(tbl.round(3).to_string(index=False))
     fig, ax = plt.subplots(1, 2, figsize=(9, 3.5))
     ax[0].plot(tbl['k'], tbl['inertia'], 'o-')

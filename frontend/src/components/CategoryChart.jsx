@@ -1,5 +1,7 @@
+import { useRef } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ruleLabel } from '../format.js'
+import ExportButtons from './ExportButtons.jsx'
 
 function ChartTooltip({ active, payload }) {
   if (!active || !payload?.length) return null
@@ -24,9 +26,10 @@ export default function CategoryChart({ items, activeCategory, onSelectCategory 
     .map(([category, count]) => ({ category, count, label: ruleLabel(category), active: category === activeCategory }))
     .sort((a, b) => b.count - a.count)
   const allowed = items.filter((c) => !c.blocked).length
+  const chartRef = useRef(null)
 
   return (
-    <figure className="panel chart-panel">
+    <figure className="panel chart-panel" ref={chartRef}>
       <figcaption>
         <h2 className="chart-title">Types of attack blocked this session</h2>
         <p className="chart-sub">
@@ -34,6 +37,11 @@ export default function CategoryChart({ items, activeCategory, onSelectCategory 
           {' '}{allowed} prompt{allowed === 1 ? ' was' : 's were'} allowed.
         </p>
       </figcaption>
+      {data.length > 0 && (
+        <ExportButtons chartRef={chartRef} name="session-attack-types" title="Types of attack blocked this session"
+                       legend={[{ name: 'Blocked prompts', colour: '#c23a32' }]}
+                       rows={data.map((d) => ({ attack_type: d.label, blocked_prompts: d.count }))} />
+      )}
       {data.length === 0 ? (
         <p className="empty-state">No prompts have been blocked yet.</p>
       ) : (

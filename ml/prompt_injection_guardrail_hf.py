@@ -214,6 +214,9 @@ def main(sources, outdir='outputs', min_recall=0.90, folds=5, deploy='auto'):
     res.to_csv(os.path.join(outdir, 'model_comparison.csv'), index=False)
     print('\n', res.round(3).to_string(index=False))
     pig.save_eval_plots(probas, y_test, thresholds, outdir)
+    # Every model's test-set scores, so the website can draw the ROC and precision-recall curves and
+    # recalculate the confusion matrix at any threshold the user picks.
+    pd.DataFrame({'label': y_test.to_numpy(), **probas}).to_csv(os.path.join(outdir, 'test_scores.csv'), index=False)
     if 'logistic' in tuned:
         pig.top_terms(tuned['logistic'])
 
@@ -262,6 +265,11 @@ def main(sources, outdir='outputs', min_recall=0.90, folds=5, deploy='auto'):
     print('Saved guardrail_model.joblib, category_model.joblib (if trained) and model_meta.json. '
           'The FastAPI app must import prompt_injection_guardrail so the pipelines can load, and should call '
           'pig.explain(text, guardrail_model, threshold, category_model) to answer /predict.')
+
+    # Written last: it tells the website's Our data page that this run is complete. Until it exists,
+    # the page keeps showing the previous run's results instead of a mix of old and new files.
+    with open(os.path.join(outdir, 'run_complete.json'), 'w') as f:
+        json.dump({'finished_at': pd.Timestamp.now().isoformat(timespec='seconds'), 'model': deploy}, f, indent=2)
 
 
 if __name__ == '__main__':

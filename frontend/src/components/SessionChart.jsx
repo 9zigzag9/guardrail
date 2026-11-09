@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   CartesianGrid, ReferenceLine, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { formatTime, percent } from '../format.js'
+import ExportButtons from './ExportButtons.jsx'
 
 const COLOURS = { Allowed: '#0b7f74', Blocked: '#c23a32' }
 
@@ -31,6 +32,7 @@ function ChartTooltip({ active, payload }) {
 // Question this chart answers: how risky was each prompt I checked, and how close did it come to being blocked?
 export default function SessionChart({ items, threshold, selectedId, onSelect }) {
   const [show, setShow] = useState({ Allowed: true, Blocked: true })
+  const chartRef = useRef(null)
   const points = [...items].reverse().map((c, i) => ({ ...c, n: i + 1, score: c.attack_probability * 100 }))
   const series = {
     Allowed: points.filter((c) => !c.blocked),
@@ -38,7 +40,7 @@ export default function SessionChart({ items, threshold, selectedId, onSelect })
   }
 
   return (
-    <figure className="panel chart-panel">
+    <figure className="panel chart-panel" ref={chartRef}>
       <figcaption>
         <h2 className="chart-title">Risk of each prompt this session</h2>
         <p className="chart-sub">Each dot is one check. Dots above the dashed line were blocked. Select a dot for its details.</p>
@@ -53,6 +55,13 @@ export default function SessionChart({ items, threshold, selectedId, onSelect })
           </button>
         ))}
       </div>
+
+      {points.length > 0 && (
+        <ExportButtons chartRef={chartRef} name="session-risk" title="Risk of each prompt this session"
+                       legend={Object.keys(series).filter((s) => show[s]).map((s) => ({ name: s, colour: COLOURS[s] }))}
+                       rows={points.map((c) => ({ check: c.n, time: c.created_at, decision: c.blocked ? 'Blocked' : 'Allowed',
+                                                  attack_probability: c.attack_probability, category: c.category ?? '', prompt: c.text }))} />
+      )}
 
       {points.length === 0 ? (
         <p className="empty-state">No checks yet. Each prompt you check appears here.</p>
