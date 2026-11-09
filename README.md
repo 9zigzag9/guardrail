@@ -2,9 +2,7 @@
 
 **Session 11, Group 3:** Zahara Rashini Amarasiri Gunawardana, Le Thuy Duong Nguyen, Tomas Agustin Cornejo Beltran
 
-A website that checks a prompt **before** it reaches an AI assistant and **allows** it or **blocks** it as a prompt
-injection, with the model's confidence, the words that triggered it and a one-line explanation.
-React front end, FastAPI back end, and the scikit-learn model from Assignment 2.
+A website that checks a prompt **before** it reaches an AI assistant and **allows** it or **blocks** it as a prompt injection, with the model's confidence, the words that triggered it and a one-line explanation. React front end, FastAPI back end, and the scikit-learn model from Assignment 2.
 
 ## Documentation
 
@@ -21,14 +19,11 @@ React front end, FastAPI back end, and the scikit-learn model from Assignment 2.
 
 ### 1. You need
 
-[Miniconda](https://docs.conda.io/en/latest/miniconda.html) (or Anaconda) and [Node.js](https://nodejs.org/) 22 or later.
-Commands below work in Anaconda Prompt, PowerShell, or a macOS/Linux terminal. If `conda` is not recognised in
-PowerShell, use Anaconda Prompt instead.
+[Miniconda](https://docs.conda.io/en/latest/miniconda.html) (or Anaconda) and [Node.js](https://nodejs.org/) 22 or later. Commands below work in Anaconda Prompt, PowerShell, or a macOS/Linux terminal. If `conda` is not recognised in PowerShell, use Anaconda Prompt instead.
 
 ### 2. Set up (once)
 
-Unzip the submitted ZIP and open a terminal in the unzipped folder (the one that contains this README).
-Then:
+Unzip the submitted ZIP and open a terminal in the unzipped folder (the one that contains this README). Then:
 
 ```bash
 conda env create -f environment.yml
@@ -37,8 +32,7 @@ npm ci
 cd ..
 ```
 
-This installs the exact pinned versions. It takes a few minutes the first time. Using Git instead of the ZIP? Run
-`git clone https://github.com/9zigzag9/guardrail.git` and `cd guardrail` first.
+This installs the exact pinned versions. It takes a few minutes the first time. Using Git instead of the ZIP? Run `git clone https://github.com/9zigzag9/guardrail.git` and `cd guardrail` first.
 
 ### 3. Start (every time), from the project folder
 
@@ -58,8 +52,7 @@ npm run dev
 
 ### 4. Check it works
 
-Open **http://localhost:5173**. The status pill should be green. Choose the *Direct injection* example and select
-**Check prompt**: it should be **Blocked**. The API documentation is at http://localhost:8000/docs.
+Open **http://localhost:5173**. The status pill should be green. Choose the *Direct injection* example and select **Check prompt**: it should be **Blocked**. The API documentation is at http://localhost:8000/docs.
 
 ### 5. Stop, re-run and reset
 
@@ -87,8 +80,7 @@ All 80 tests should pass.
 python ml/prompt_injection_guardrail_hf.py --repos data/dataset_clean.csv
 ```
 
-The website's **Our data** page shows the new results straight away. To make the website *use* the new model, follow
-[docs/running.md, section 7.3](docs/running.md#73-deploy-the-new-model).
+The website's **Our data** page shows the new results straight away. To make the website *use* the new model, follow [docs/running.md, section 7.3](docs/running.md#73-deploy-the-new-model).
 
 Something not working? See [troubleshooting](docs/running.md#10-troubleshooting).
 
@@ -109,21 +101,13 @@ One request traced step by step, and the endpoint list, are in [docs/architectur
 ## Threat model
 
 **Who would attack it?**
-1. **Someone trying to misuse the AI assistant behind the guardrail.** This is the main attacker. They write prompt
-   injections and jailbreaks and want them to be **allowed**.
-2. **Someone who wants the guardrail out of the way.** If the guardrail is slow or down, the assistant is either
-   unprotected or unavailable, which is a win for attacker 1 or a denial of service for everyone.
-3. **A curious or hostile user of the same deployment** who wants to read prompts other people have checked. Checked
-   prompts can contain confidential instructions, customer data or internal system prompts.
+1. **Someone trying to misuse the AI assistant behind the guardrail.** This is the main attacker. They write prompt injections and jailbreaks and want them to be **allowed**.
+2. **Someone who wants the guardrail out of the way.** If the guardrail is slow or down, the assistant is either unprotected or unavailable, which is a win for attacker 1 or a denial of service for everyone.
+3. **A curious or hostile user of the same deployment** who wants to read prompts other people have checked. Checked prompts can contain confidential instructions, customer data or internal system prompts.
 
-**What are they trying to achieve?** Get an injection past the model (evasion); make the server stop answering or
-answer too slowly to be useful; read or change stored checks that are not theirs; learn how the model decides so they
-can craft prompts that just pass.
+**What are they trying to achieve?** Get an injection past the model (evasion); make the server stop answering or answer too slowly to be useful; read or change stored checks that are not theirs; learn how the model decides so they can craft prompts that just pass.
 
-**What can they actually do?** They do not need our interface. They can send any HTTP request directly with curl or a
-script: any text up to the size limit, unusual Unicode, SQL syntax and LIKE wildcards in the text and the history
-search, thousands of requests in a short time, and text crafted to be expensive to process (for example input that
-makes a regular expression backtrack). They cannot log in (there are no accounts) and cannot change files on the server.
+**What can they actually do?** They do not need our interface. They can send any HTTP request directly with curl or a script: any text up to the size limit, unusual Unicode, SQL syntax and LIKE wildcards in the text and the history search, thousands of requests in a short time, and text crafted to be expensive to process (for example input that makes a regular expression backtrack). They cannot log in (there are no accounts) and cannot change files on the server.
 
 **Which risks in section 2.7 our design exposes**
 
@@ -139,17 +123,13 @@ makes a regular expression backtrack). They cannot log in (there are no accounts
 | SSRF | No | The back end never makes an outbound request based on input. |
 | Broken access control | No | There are no user accounts. History is kept apart per browser session instead, and another session's IDs answer 404. |
 
-Attacker 1 is the reason for the advanced security work: an injection that the model misses because a few letters were
-swapped for look-alike Unicode characters is exactly "an injection that gets past the guardrail".
+Attacker 1 is the reason for the advanced security work: an injection that the model misses because a few letters were swapped for look-alike Unicode characters is exactly "an injection that gets past the guardrail".
 
 How each chosen risk is defended, with before and after results: [docs/security.md](docs/security.md).
 
 ## Pinned versions
 
-Python 3.14, FastAPI 0.162.0, Starlette 1.10.0, Pydantic 2.14.1, uvicorn 0.54.0, scikit-learn 1.9.1, pandas 3.0.6,
-numpy 2.5.3. Node.js 22, React 19.3.1, Vite 8.3.5, react-router-dom 7.18.4, Recharts 3.10.1.
-Every version is pinned in `ml/requirements.txt`, `backend/requirements.txt` and `frontend/package-lock.json`; the full
-table is in [docs/architecture.md](docs/architecture.md#pinned-dependency-versions).
+Python 3.14, FastAPI 0.162.0, Starlette 1.10.0, Pydantic 2.14.1, uvicorn 0.54.0, scikit-learn 1.9.1, pandas 3.0.6, numpy 2.5.3. Node.js 22, React 19.3.1, Vite 8.3.5, react-router-dom 7.18.4, Recharts 3.10.1. Every version is pinned in `ml/requirements.txt`, `backend/requirements.txt` and `frontend/package-lock.json`; the full table is in [docs/architecture.md](docs/architecture.md#pinned-dependency-versions).
 
 ## References
 

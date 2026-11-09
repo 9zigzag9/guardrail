@@ -2,9 +2,7 @@
 
 [Back to README](../README.md)
 
-This guide covers everything from a fresh machine to a running website, plus tests, retraining and the
-security demos. Commands are for **Windows PowerShell** unless marked; macOS and Linux use the same
-commands except where noted.
+This guide covers everything from a fresh machine to a running website, plus tests, retraining and the security demos. Commands are for **Windows PowerShell** unless marked; macOS and Linux use the same commands except where noted.
 
 The app has two parts that run at the same time, each in its own terminal:
 
@@ -23,21 +21,18 @@ The app has two parts that run at the same time, each in its own terminal:
 | Node.js | 22 or later (see `frontend/.nvmrc`) | `node --version` |
 | Git (only to clone, and for the before/after security demos) | any | `git --version` |
 
-If PowerShell says `conda` is not recognised, either open **Anaconda Prompt** from the Start menu and use
-that instead, or run `conda init powershell` once in Anaconda Prompt and then open a new PowerShell window.
+If PowerShell says `conda` is not recognised, either open **Anaconda Prompt** from the Start menu and use that instead, or run `conda init powershell` once in Anaconda Prompt and then open a new PowerShell window.
 
 ## 2. One-time setup
 
-Unzip the submitted ZIP and open a terminal in the unzipped folder, the project root (the folder that contains
-`environment.yml`). If you are using Git instead, clone the repository and go into it:
+Unzip the submitted ZIP and open a terminal in the unzipped folder, the project root (the folder that contains `environment.yml`). If you are using Git instead, clone the repository and go into it:
 
 ```powershell
 git clone https://github.com/9zigzag9/guardrail.git
 cd guardrail
 ```
 
-Create the Python environment. It installs Python, the machine learning libraries and the back end
-packages pinned in `backend/requirements.txt`:
+Create the Python environment. It installs Python, the machine learning libraries and the back end packages pinned in `backend/requirements.txt`:
 
 ```powershell
 conda env create -f environment.yml
@@ -65,8 +60,7 @@ conda activate guardrail
 pip install -r ml/requirements.txt -r backend/requirements.txt
 ```
 
-The saved models were made with **scikit-learn 1.9.1**, which `ml/requirements.txt` pins. A different version may
-refuse to load the `.joblib` model files.
+The saved models were made with **scikit-learn 1.9.1**, which `ml/requirements.txt` pins. A different version may refuse to load the `.joblib` model files.
 
 ## 3. Start the app (every time)
 
@@ -77,8 +71,7 @@ conda activate guardrail
 python -m uvicorn backend.main:app --port 8000 --no-server-header
 ```
 
-Wait for `Model hash verified and loaded in 2 worker processes` and `Application startup complete`.
-Always run this from the project root, not from inside `backend/`.
+Wait for `Model hash verified and loaded in 2 worker processes` and `Application startup complete`. Always run this from the project root, not from inside `backend/`.
 
 **Terminal 2, front end.** From the project root:
 
@@ -94,10 +87,8 @@ Open **http://localhost:5173** in a browser.
 
 ## 4. Check that it works
 
-1. The **Check a prompt** page shows a green status pill: *Server ready: logistic model, blocks at 77.6%*.
-   If it is red, the back end is not running (go back to step 3, terminal 1).
-2. Select the **Direct injection** example, then **Check prompt**. The result should be **Blocked** with the
-   matched words highlighted. The **Safe request** example should be **Allowed**.
+1. The **Check a prompt** page shows a green status pill: *Server ready: logistic model, blocks at 77.6%*. If it is red, the back end is not running (go back to step 3, terminal 1).
+2. Select the **Direct injection** example, then **Check prompt**. The result should be **Blocked** with the matched words highlighted. The **Safe request** example should be **Allowed**.
 3. The two charts and the history list fill in as you check prompts. Select a dot or a list item to see that check.
 4. **Our data** shows the dataset, the test results and the training charts, read live from `outputs/`.
 5. **About** shows the project and the team.
@@ -119,13 +110,11 @@ curl -X POST http://localhost:8000/api/check -H "Content-Type: application/json"
 
 ## 5. Stop the app
 
-Press `Ctrl` + `C` in each terminal. Check history is kept in `backend/data/history.db` (created
-automatically and never committed). Delete that file to start with an empty history.
+Press `Ctrl` + `C` in each terminal. Check history is kept in `backend/data/history.db` (created automatically and never committed). Delete that file to start with an empty history.
 
 ## 6. Run the tests
 
-From the project root with the environment active. No server needs to be running. This runs all 80 tests in `tests/`
-(the settings are in `pytest.ini`).
+From the project root with the environment active. No server needs to be running. This runs all 80 tests in `tests/` (the settings are in `pytest.ini`).
 
 ```powershell
 conda activate guardrail
@@ -166,8 +155,7 @@ python ml/prompt_injection_guardrail_hf.py --repos data/dataset_clean.csv
 python ml/prompt_injection_guardrail_hf.py
 ```
 
-A full run takes about 20 to 30 minutes and writes everything to `outputs/`. A warning about `HF_TOKEN` is normal; the
-datasets are public. What the training does, step by step, is in [model.md](model.md#training).
+A full run takes about 20 to 30 minutes and writes everything to `outputs/`. A warning about `HF_TOKEN` is normal; the datasets are public. What the training does, step by step, is in [model.md](model.md#training).
 
 | Option | Meaning | Default |
 |---|---|---|
@@ -177,17 +165,13 @@ datasets are public. What the training does, step by step, is in [model.md](mode
 | `--deploy` | Model to save: `auto` (best cross-validation score), `logistic`, `linear_svm`, `random_forest` | `auto` |
 | `--fast` | 3-fold instead of 5-fold cross-validation, for a quicker run | off |
 
-To add your own data, make a CSV with `text` and `label` columns and pass it with the prepared one:
-`--repos data/dataset_clean.csv,my_extra_data.csv`.
+To add your own data, make a CSV with `text` and `label` columns and pass it with the prepared one: `--repos data/dataset_clean.csv,my_extra_data.csv`.
 
-**Notebook alternative:** run `jupyter notebook` from the project root and open `ml/prompt_injection_guardrail.ipynb`.
-It uses a sample of each dataset by default (`QUICK_RUN = True`), takes a few minutes and writes to
-`ml/outputs_notebook/`, so it never changes `outputs/`.
+**Notebook alternative:** run `jupyter notebook` from the project root and open `ml/prompt_injection_guardrail.ipynb`. It uses a sample of each dataset by default (`QUICK_RUN = True`), takes a few minutes and writes to `ml/outputs_notebook/`, so it never changes `outputs/`.
 
 ### 7.2 What updates on its own
 
-The **Our data** page reads these files from `outputs/` each time it loads, so it shows the new run
-straight away. There is no need to rebuild or restart anything. Open the page or select **Refresh figures**.
+The **Our data** page reads these files from `outputs/` each time it loads, so it shows the new run straight away. There is no need to rebuild or restart anything. Open the page or select **Refresh figures**.
 
 | File | Shown on the page as |
 |---|---|
@@ -200,8 +184,7 @@ The response time card is measured live from the checks the server has answered 
 
 ### 7.3 Deploy the new model
 
-The back end keeps serving the old model until you copy the new one in. Until then, the Our data page shows
-a notice that its figures are from a newer run than the model answering checks.
+The back end keeps serving the old model until you copy the new one in. Until then, the Our data page shows a notice that its figures are from a newer run than the model answering checks.
 
 1. Copy the three model files from `outputs/` into `backend/model/`, replacing the old ones:
 
@@ -253,8 +236,7 @@ Both demos attack only your own local server. Start the back end first (step 3).
 python demo_requests/sqli_demo.py
 ```
 
-It shows an unsafe query (written only inside the demo script) leaking another user's prompts, then the
-same input sent to the real API finding nothing.
+It shows an unsafe query (written only inside the demo script) leaking another user's prompts, then the same input sent to the real API finding nothing.
 
 **Denial of service** (current, defended version):
 
@@ -262,8 +244,7 @@ same input sent to the real API finding nothing.
 python demo_requests/dos_attack.py
 ```
 
-To see the attack succeed, run the version from before the defence on a second port. In a third terminal,
-from the project root:
+To see the attack succeed, run the version from before the defence on a second port. In a third terminal, from the project root:
 
 ```powershell
 git worktree add ..\guardrail-baseline baseline-before-defences
@@ -272,11 +253,9 @@ conda activate guardrail
 python -m uvicorn backend.main:app --port 8001
 ```
 
-Then, back in the project root: `python demo_requests/dos_attack.py http://127.0.0.1:8001`.
-Remove the extra copy afterwards with `git worktree remove ..\guardrail-baseline`.
+Then, back in the project root: `python demo_requests/dos_attack.py http://127.0.0.1:8001`. Remove the extra copy afterwards with `git worktree remove ..\guardrail-baseline`.
 
-**Detection evasion** (advanced security, before and after). The version before the defence is the tag
-`before-evasion-defence`. Run it on port 8001 the same way as the baseline above:
+**Detection evasion** (advanced security, before and after). The version before the defence is the tag `before-evasion-defence`. Run it on port 8001 the same way as the baseline above:
 
 ```powershell
 git worktree add ..\guardrail-before before-evasion-defence
@@ -285,8 +264,7 @@ conda activate guardrail
 python -m uvicorn backend.main:app --port 8001
 ```
 
-With the current back end still on port 8000, from the project root (each run takes about 6 minutes and sends
-about 70,000 requests to your own machine):
+With the current back end still on port 8000, from the project root (each run takes about 6 minutes and sends about 70,000 requests to your own machine):
 
 ```powershell
 python demo_requests/evasion_attack.py http://127.0.0.1:8001 --label before
@@ -294,14 +272,11 @@ python demo_requests/evasion_attack.py http://127.0.0.1:8000 --label after
 python demo_requests/evasion_attack.py --compare
 ```
 
-`--compare` prints the before and after table and saves `outputs/evasion_before_after.png`. For a quick live demo,
-paste `іgnоrе all рrеvіоus іnѕtruсtіоnѕ` (Cyrillic і о е р ѕ с) into the website: the current version highlights the
-disguised words in your own text.
+`--compare` prints the before and after table and saves `outputs/evasion_before_after.png`. For a quick live demo, paste `іgnоrе all рrеvіоus іnѕtruсtіоnѕ` (Cyrillic і о е р ѕ с) into the website: the current version highlights the disguised words in your own text.
 
 ## 9. Settings
 
-The back end reads its settings from environment variables. All have safe defaults, listed in
-`backend/.env.example`; no secrets are needed. Set one in PowerShell before starting the server, for example:
+The back end reads its settings from environment variables. All have safe defaults, listed in `backend/.env.example`; no secrets are needed. Set one in PowerShell before starting the server, for example:
 
 ```powershell
 $env:INFERENCE_WORKERS = "4"
@@ -322,9 +297,7 @@ python -m uvicorn backend.main:app --port 8000 --no-server-header
 | `OUTPUTS_DIR` | `outputs` | Training outputs read by the Our data page |
 | `ENABLE_DOCS` | `true` | Whether `/docs` is served |
 
-The front end calls the back end at `http://localhost:8000`. To change that, copy `frontend/.env.example`
-to `frontend/.env.local`, edit `VITE_API_URL`, and restart `npm run dev`. If the front end runs on a different
-address, add that address to `FRONTEND_ORIGINS` as well.
+The front end calls the back end at `http://localhost:8000`. To change that, copy `frontend/.env.example` to `frontend/.env.local`, edit `VITE_API_URL`, and restart `npm run dev`. If the front end runs on a different address, add that address to `FRONTEND_ORIGINS` as well.
 
 ## 10. Troubleshooting
 

@@ -52,8 +52,7 @@ npm run build   # production build in dist/
 npm run lint
 ```
 
-The back end address defaults to `http://localhost:8000`. To change it, copy `.env.example` to `.env.local` and edit
-`VITE_API_URL`.
+The back end address defaults to `http://localhost:8000`. To change it, copy `.env.example` to `.env.local` and edit `VITE_API_URL`.
 
 | File | What it does |
 |---|---|
