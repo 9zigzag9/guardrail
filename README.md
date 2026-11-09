@@ -256,15 +256,22 @@ More detail, including what each file does: `frontend/README.md`.
 - Each browser tab gets a random session ID (`crypto.randomUUID()`), sent as `X-Session-Id`, so its history stays separate.
 - `npm audit --omit=dev` reports 0 vulnerabilities in the packages shipped to users.
 
-## Results of the submitted run
+## Results of the deployed model's training run
 
-Test set (6,401 prompts), each model at its own threshold chosen on the training data:
+Test set (6,401 prompts the models never saw), each model at its own threshold chosen on the training data.
+These are the figures in `outputs/model_comparison.csv`, from the retrain on `data/dataset_clean.csv` that produced
+the model in `backend/model/`. The website's **Our data** page reads the same file, so it always matches this table
+until the model is retrained.
 
 | Model | Threshold | Precision | Recall | ROC-AUC | PR-AUC | Safe prompts blocked (FP) | Attacks missed (FN) |
 |---|---|---|---|---|---|---|---|
-| Logistic regression | 0.797 | 0.983 | 0.902 | 0.992 | 0.990 | 42 | 268 |
-| Linear SVM (calibrated) | 0.768 | 0.984 | 0.900 | 0.992 | 0.990 | 41 | 273 |
-| **Random forest (saved model)** | **0.650** | **0.982** | **0.915** | **0.994** | **0.992** | 46 | 232 |
+| **Logistic regression (deployed)** | **0.776** | **0.982** | **0.908** | **0.992** | **0.990** | **45** | **252** |
+| Linear SVM (calibrated) | 0.758 | 0.983 | 0.903 | 0.992 | 0.990 | 43 | 265 |
+| Random forest | 0.640 | 0.982 | 0.918 | 0.994 | 0.992 | 47 | 225 |
+
+The deployed model's accuracy is 95.4% (3,625 of 3,670 safe prompts allowed and 2,479 of 2,731 attacks blocked).
+The three models are within about one percentage point of each other on every measure.
+The Assignment 2 report used an earlier run in which the random forest was saved; its figures differ slightly from these.
 
 ## Outputs
 
