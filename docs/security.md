@@ -1,4 +1,4 @@
-# Security: threat model, defences and results
+# Security: the defences and their results
 
 [Back to README](../README.md)
 
@@ -23,39 +23,9 @@ submitted for marking as defences.
 
 ## Threat model
 
-**Who would attack it?**
-1. **Someone trying to misuse the AI assistant behind the guardrail.** This is the main attacker. They write prompt
-   injections and jailbreaks and want them to be **allowed**.
-2. **Someone who wants the guardrail out of the way.** If the guardrail is slow or down, the assistant is either
-   unprotected or unavailable, which is a win for attacker 1 or a denial of service for everyone.
-3. **A curious or hostile user of the same deployment** who wants to read prompts other people have checked. Checked
-   prompts can contain confidential instructions, customer data or internal system prompts.
-
-**What are they trying to achieve?** Get an injection past the model (evasion); make the server stop answering or
-answer too slowly to be useful; read or change stored checks that are not theirs; learn how the model decides so they
-can craft prompts that just pass.
-
-**What can they actually do?** They do not need our interface. They can send any HTTP request directly with curl or a
-script: any text up to the size limit, unusual Unicode, SQL syntax and LIKE wildcards in the text and the history
-search, thousands of requests in a short time, and text crafted to be expensive to process (for example input that
-makes a regular expression backtrack). They cannot log in (there are no accounts) and cannot change files on the server.
-
-**Which risks in section 2.7 our design exposes**
-
-| Risk | Applies? | Why |
-|---|---|---|
-| Denial of service | **Yes, chosen** | Running the model costs far more than sending a request, and our text features use regular expressions that can be made to backtrack. A slow guardrail is attacker 2's goal. |
-| SQL injection | **Yes, chosen** | We store every check in SQLite and search it. Every input to a prompt injection guardrail is itself an attack string, so hostile text reaching SQL is guaranteed, not hypothetical. |
-| Missing rate limiting | Yes, partly | The admission control built for denial of service caps how much work runs at once, but there is no per-client limit, so one client can still probe the model at the server's full speed. Not chosen, because both defences would rely on the same mechanism; listed under next steps. |
-| Unsafe model loading | Yes | The model is a joblib file. The SHA-256 hash check at startup is in place but not submitted. |
-| Misconfiguration and dependencies | Yes | Security headers, docs settings and audits are in place (see [Security hygiene](#security-hygiene-and-other-measures)), but OWASP ZAP was not run, so it is not submitted. |
-| Command injection | No | The back end never runs a system command. |
-| Unsafe file upload | No | The application accepts only JSON text, never files. |
-| SSRF | No | The back end never makes an outbound request based on input. |
-| Broken access control | No | There are no user accounts. History is kept apart per browser session instead, and another session's IDs answer 404. |
-
-Attacker 1 is the reason for the advanced security work: an injection that the model misses because a few letters were
-swapped for look-alike Unicode characters is exactly "an injection that gets past the guardrail".
+The threat model is in the [README](../README.md#threat-model), where the assignment asks for it: who would
+attack the application, what they want, what they can do, and which section 2.7 risks apply. The defences below
+follow from it.
 
 ## Defence 1: Denial of service (Advanced)
 

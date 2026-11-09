@@ -21,14 +21,15 @@ The app has two parts that run at the same time, each in its own terminal:
 |---|---|---|
 | Miniconda or Anaconda | any recent | `conda --version` |
 | Node.js | 22 or later (see `frontend/.nvmrc`) | `node --version` |
-| Git | any | `git --version` |
+| Git (only to clone, and for the before/after security demos) | any | `git --version` |
 
 If PowerShell says `conda` is not recognised, either open **Anaconda Prompt** from the Start menu and use
 that instead, or run `conda init powershell` once in Anaconda Prompt and then open a new PowerShell window.
 
 ## 2. One-time setup
 
-Get the code and go to the project root (the folder that contains `environment.yml`):
+Unzip the submitted ZIP and open a terminal in the unzipped folder, the project root (the folder that contains
+`environment.yml`). If you are using Git instead, clone the repository and go into it:
 
 ```powershell
 git clone https://github.com/9zigzag9/guardrail.git
