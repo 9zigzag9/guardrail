@@ -5,6 +5,25 @@ export const percent = (p) => `${(p * 100).toFixed(1)}%`
 const MODEL_NAMES = { logistic: 'Logistic regression', linear_svm: 'Linear SVM (calibrated)', random_forest: 'Random forest' }
 export const modelName = (m) => MODEL_NAMES[m] ?? m
 
+// The engineered features in words: [full name, short name for tight chart labels].
+const FEATURE_NAMES = {
+  len_raw: ['Length (characters)', 'Length'],
+  entropy_raw: ['Character randomness (entropy)', 'Entropy'],
+  punct_raw: ['Share of punctuation', 'Punctuation'],
+  digit_raw: ['Share of digits', 'Digits'],
+  non_ascii_ratio: ['Share of non-English characters', 'Non-ASCII'],
+  zero_width: ['Hidden zero-width characters', 'Zero-width'],
+  spaced_letters: ['Spaced or dotted letters', 'Spaced letters'],
+  leet_tokens: ['Share of words in leetspeak', 'Leetspeak'],
+  b64_decoded: ['Base64 text that was decoded', 'Base64'],
+  struct_markers: ['Chat-format markers', 'Chat markers'],
+  override_hits: ['"Ignore your instructions" phrases', 'Override'],
+  role_hits: ['Role-play phrases', 'Role-play'],
+  extract_hits: ['"Reveal your prompt" phrases', 'Extraction'],
+  word_count: ['Number of words', 'Words'],
+}
+export const featureLabel = (name, short = false) => FEATURE_NAMES[name]?.[short ? 1 : 0] ?? name
+
 const RULE_LABELS = {
   instruction_override: 'Instruction override',
   prompt_extraction: 'Prompt extraction',

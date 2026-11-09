@@ -30,18 +30,11 @@ export function downloadCsv(filename, rows) {
   save(new Blob(['\ufeff', lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }), filename)
 }
 
-// Saves an image the back end serves (the training charts shown as pictures). The file is fetched first,
-// because browsers ignore a plain download link to another address (the API runs on a different port).
-export async function downloadUrl(url, filename) {
-  const response = await fetch(url)
-  if (!response.ok) throw new Error('The chart could not be downloaded.')
-  save(await response.blob(), filename)
-}
-
 // Draws the chart's SVG onto a white canvas with its title above and a legend below, then saves it as PNG.
 export async function downloadPng(container, filename, title, legend = []) {
   // Recharts also draws small SVG icons, so take the largest SVG: that is the chart itself.
-  const svg = [...container.querySelectorAll('svg.recharts-surface')]
+  // (svg.chart-svg marks the charts drawn by hand: the box plot and the heatmap.)
+  const svg = [...container.querySelectorAll('svg.recharts-surface, svg.chart-svg')]
     .sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0]
   if (!svg) throw new Error('The chart has not been drawn yet.')
   const { width, height } = svg.getBoundingClientRect()

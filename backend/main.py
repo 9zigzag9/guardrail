@@ -30,7 +30,7 @@ from typing import Annotated, Literal
 from fastapi import FastAPI, Header, HTTPException, Path as PathParam, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -388,11 +388,33 @@ class Evasion(BaseModel):
     cost: list[EvasionCost]
 
 
-class Figure(BaseModel):
-    name: str = Field(description="Fetch the image from /api/outputs/{name}.")
-    title: str
-    text: str
-    version: int = Field(description="Changes when the chart is regenerated, so browsers fetch the new image.")
+class BoxStats(BaseModel):
+    q1: float
+    median: float
+    q3: float
+    low: float = Field(description="Lower whisker: the smallest value within 1.5 x IQR of the box.")
+    high: float = Field(description="Upper whisker: the largest value within 1.5 x IQR of the box.")
+    mean: float
+    count: int
+
+
+class FeatureBoxes(BaseModel):
+    feature: str
+    safe: BoxStats
+    attack: BoxStats
+
+
+class Correlation(BaseModel):
+    features: list[str]
+    matrix: list[list[float]] = Field(description="matrix[i][j] is the correlation between features i and j.")
+
+
+class ClusterPoint(BaseModel):
+    x: float
+    y: float
+    kmeans: int = Field(description="K-means group.")
+    dbscan: int = Field(description="DBSCAN group; -1 means noise (not in any dense group).")
+    text: str = Field(description="The attack prompt, cut to 140 characters.")
 
 
 class Latency(BaseModel):
@@ -416,7 +438,9 @@ class ModelStatsResponse(BaseModel):
     lengths: list[LengthBin] | None
     clusters: Clusters | None
     evasion: Evasion | None = Field(description="Null until the evasion measurement has been run.")
-    figures: list[Figure] = Field(description="Training charts shown as images.")
+    features: list[FeatureBoxes] | None = Field(description="Box plot numbers for every engineered feature.")
+    correlation: Correlation | None
+    cluster_points: list[ClusterPoint] | None = Field(description="A fixed random sample of attack prompts for the cluster map.")
     latency: Latency
 
     model_config = ConfigDict(json_schema_extra={"examples": [{
@@ -441,8 +465,11 @@ class ModelStatsResponse(BaseModel):
                                  "final": {"before": {"got_through": 132, "prompts": 300, "rate": 0.44, "low": 0.386, "high": 0.496}}}],
                     "random_swaps": [{"share_swapped": 1.0, "before": 0.0614, "after": 0.0}],
                     "cost": [{"run": "before", "safe_blocked": 46, "safe": 3670, "median_ms": 20.7}]},
-        "figures": [{"name": "eda_correlation.png", "title": "How the features relate to each other",
-                     "text": "Correlation between the engineered features.", "version": 1793952780}],
+        "features": [{"feature": "override_hits",
+                      "safe": {"q1": 0, "median": 0, "q3": 0, "low": 0, "high": 0, "mean": 0.02, "count": 18349},
+                      "attack": {"q1": 0, "median": 0, "q3": 1, "low": 0, "high": 2, "mean": 0.41, "count": 13654}}],
+        "correlation": {"features": ["len_raw", "word_count"], "matrix": [[1.0, 0.97], [0.97, 1.0]]},
+        "cluster_points": [{"x": 0.31, "y": 0.82, "kmeans": 8, "dbscan": 0, "text": "Ignore all previous instructions and"}],
         "latency": {"checks": 30, "median_ms": 10.1, "p95_ms": 13.6},
     }]})
 
@@ -722,18 +749,3 @@ def get_model_stats():
                "median_ms": statistics.median(times) if times else None,
                "p95_ms": times[max(0, math.ceil(len(times) * 0.95) - 1)] if times else None}
     return {**stats, "latency": latency}
-
-
-@app.get("/api/outputs/{name}", tags=["model"], response_class=FileResponse,
-         summary="One chart from the training outputs",
-         description="Only the charts listed in `figures` by /api/model-stats can be fetched; any other name answers 404.",
-         responses={200: {"description": "The chart as a PNG image.",
-                          "content": {"image/png": {"schema": {"type": "string", "format": "binary"}}}},
-                    404: error_example("http_error", "Resource not found.")})
-def get_output_figure(name: Annotated[str, PathParam(description="A chart name listed by /api/model-stats.",
-                                                    examples=["eda_correlation.png"])]):
-    # The name must be one of the fixed chart names, so no other file (or ../ path) can be reached.
-    path = OUTPUTS_DIR / name
-    if name not in model_stats.FIGURES or not path.is_file():
-        raise HTTPException(status_code=404)
-    return FileResponse(path, media_type="image/png")

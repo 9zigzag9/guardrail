@@ -59,7 +59,8 @@ The back end address defaults to `http://localhost:8000`. To change it, copy `.e
 | `src/main.jsx`, `src/App.jsx` | Starts the app; the header, navigation and page routes |
 | `src/api.js` | The only code that calls the back end: session ID, time limit, readable errors |
 | `src/validation.js` | Checks a prompt before sending (the back end repeats every check) |
-| `src/format.js` | Turns API values into readable labels |
+| `src/format.js` | Turns API values into readable labels, including model and feature names |
+| `src/useElementWidth.js` | Measures a chart's width, so the hand-drawn charts keep readable text on a phone |
 | `src/exportChart.js` | Saves a chart as PNG or its data as CSV, in the browser (CSV cells that a spreadsheet would run as a formula are neutralised) |
 | `src/pages/CheckPage.jsx` | Main page: form, result, charts, history, and the loading, success and error states |
 | `src/pages/DataPage.jsx` | Our data: dataset, attack types, test results, model comparison, examples and the training charts, loaded live from `GET /api/model-stats` |
@@ -75,6 +76,9 @@ The back end address defaults to `http://localhost:8000`. To change it, copy `.e
 | `src/components/ClusterChart.jsx` | Our data: k-means scores for each number of attack groups tried |
 | `src/components/EvasionChart.jsx` | Our data: how many disguised attacks got through, by attacker request budget, for each version of the guardrail |
 | `src/components/ExportButtons.jsx` | The Download PNG and Download CSV buttons on every chart |
+| `src/components/FeatureChart.jsx` | Our data: box plot of any engineered feature, safe against attack (drawn as plain SVG) |
+| `src/components/CorrelationChart.jsx` | Our data: correlation heatmap of the features; select a square to explain that pair |
+| `src/components/ClusterMap.jsx` | Our data: map of 3,000 attack prompts coloured by k-means or DBSCAN group; hover to read an attack |
 | `src/components/CheckDetail.jsx` | Details of the check selected in a chart or the list |
 | `src/components/HistoryPanel.jsx` | Searchable list of past checks; the keyboard route to everything the charts do |
 | `src/components/ErrorBoundary.jsx` | Fallback page for unexpected errors, so the screen is never blank |

@@ -74,7 +74,3 @@ export const api = {
   clearHistory: () => request('/api/history', { method: 'DELETE' }),
   modelStats: () => request('/api/model-stats'),
 }
-
-// Address of a training chart image served by the back end. `version` changes when the chart is regenerated,
-// so the browser fetches the new image instead of showing an old one.
-export const figureUrl = (fig) => `${API_URL}/api/outputs/${encodeURIComponent(fig.name)}?v=${fig.version}`

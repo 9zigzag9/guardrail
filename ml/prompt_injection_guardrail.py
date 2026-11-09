@@ -626,6 +626,35 @@ def hard_negative_report(pipe, thr):
 # SECTION 6. EXPLORATORY DATA ANALYSIS (EDA)
 # ============================================================
 
+def save_feature_tables(feats, outdir):
+    """The numbers behind the feature box plots and the correlation heatmap, for the website's interactive charts.
+
+    eda_feature_boxes.csv : for every engineered feature and class, the quartiles, the whiskers (furthest
+                            values within 1.5 x IQR, as in the box plots), the mean and the count.
+    eda_correlation.csv   : the correlation matrix of the engineered features."""
+    rows = []
+    for col in NUM_COLS:
+        for label, x in feats.groupby('label')[col]:
+            q1, med, q3 = x.quantile([0.25, 0.5, 0.75])
+            iqr = q3 - q1
+            rows.append({'feature': col, 'label': label, 'q1': q1, 'median': med, 'q3': q3,
+                         'whisker_low': x[x >= q1 - 1.5 * iqr].min(), 'whisker_high': x[x <= q3 + 1.5 * iqr].max(),
+                         'mean': x.mean(), 'count': len(x)})
+    pd.DataFrame(rows).to_csv(os.path.join(outdir, 'eda_feature_boxes.csv'), index=False)
+    feats[NUM_COLS].corr().round(4).to_csv(os.path.join(outdir, 'eda_correlation.csv'))
+
+
+def save_cluster_sample(Z2, kmeans_labels, dbscan_labels, attack_texts, outdir, n=3000, seed=42):
+    """A fixed random sample of the attack prompts with their 2D position and cluster, for the website.
+    A sample keeps the file small and the chart fast; the texts are cut to 140 characters."""
+    rng = np.random.default_rng(seed)
+    idx = np.sort(rng.choice(len(attack_texts), size=min(n, len(attack_texts)), replace=False))
+    pd.DataFrame({'x': np.round(Z2[idx, 0], 4), 'y': np.round(Z2[idx, 1], 4),
+                  'kmeans': np.asarray(kmeans_labels)[idx], 'dbscan': np.asarray(dbscan_labels)[idx],
+                  'text': [str(attack_texts[i])[:140] for i in idx]}
+                 ).to_csv(os.path.join(outdir, 'attack_clusters_2d.csv'), index=False)
+
+
 def run_eda(df, outdir):
     """df needs columns text, label (0 safe, 1 attack), source. Mirrors EG section 2, steps 1 to 4."""
     # Step 1: basic facts about the table (types, missing values, class balance per source).
@@ -666,6 +695,7 @@ def run_eda(df, outdir):
 
     # Plot: correlation heatmap. Two features that are almost perfectly correlated carry
     # the same information, so one of them may be redundant.
+    save_feature_tables(feats, outdir)   # the same numbers for the website's interactive charts
     corr = feats[NUM_COLS].corr()
     plt.figure(figsize=(9, 7))
     sns.heatmap(corr, cmap='coolwarm', center=0, annot=True, fmt='.1f', annot_kws={'size': 6})
@@ -757,6 +787,7 @@ def cluster_attack_class(attack_texts, outdir, k_range=range(2, 10), min_samples
 
     # Squash the vectors to 2 dimensions purely so the clusters can be drawn on a flat chart.
     Z2 = TruncatedSVD(2, random_state=seed).fit_transform(Z)
+    save_cluster_sample(Z2, km.labels_, db, attack_texts, outdir)
     fig, ax = plt.subplots(1, 2, figsize=(11, 4))
     ax[0].scatter(Z2[:, 0], Z2[:, 1], c=km.labels_, cmap='tab10', s=8, alpha=.7)
     ax[0].set_title(f'K-means k={best_k}')

@@ -11,8 +11,10 @@ Nothing here is typed in by hand. Every value comes from files the training scri
     outputs/model_meta.json        which model and threshold the run chose (compared with the deployed one)
     dataset_clean.csv              the processed dataset (prompt lengths)
     outputs/run_complete.json      written last by the training script, when a run has finished
+    outputs/eda_feature_boxes.csv  box plot numbers for every engineered feature, safe against attack
+    outputs/eda_correlation.csv    correlation matrix of the engineered features
+    outputs/attack_clusters_2d.csv a fixed sample of attack prompts with their 2D position and cluster
     outputs/evasion_*.json         the detection evasion measurements (demo_requests/evasion_attack.py)
-    outputs/*.png                  a fixed list of training charts that are shown as images
 
 Results are cached and rebuilt only when one of those files changes. While a new training run is still
 writing its files (some are newer than run_complete.json), the page keeps showing the last complete
@@ -38,17 +40,6 @@ SOURCE_NAMES = {
 }
 
 MARKER = "run_complete.json"
-
-# Training charts shown as images, in display order. Only these names can be requested, so the image
-# endpoint can never be used to read any other file on the server.
-FIGURES = {
-    "eda_features_vs_label.png": ("Engineered features, safe against attack",
-                                  "How each hand-made feature (length, entropy, leetspeak, attack phrases and so on) differs between safe prompts and attacks."),
-    "eda_correlation.png": ("How the features relate to each other",
-                            "Correlation between the engineered features. Strongly correlated features carry overlapping information."),
-    "attack_clusters_2d.png": ("Attack prompts drawn in two dimensions",
-                               "Each dot is an attack, coloured by its k-means and DBSCAN group. Heavy overlap means attacks do not split into neat types."),
-}
 
 # The evasion measurements: the version of the guardrail each file measured, in the order they were made.
 EVASION_RUNS = {"before": "Before", "after_table": "Look-alike table only", "after": "Final defence"}
@@ -169,6 +160,40 @@ def _clusters(outputs: Path) -> dict | None:
             "best_k": int(tbl.loc[tbl["silhouette"].idxmax(), "k"])}
 
 
+def _feature_boxes(outputs: Path) -> list[dict] | None:
+    """For each engineered feature, the box plot numbers for safe prompts and for attacks."""
+    f = outputs / "eda_feature_boxes.csv"
+    if not f.exists():
+        return None
+    tbl = pd.read_csv(f)
+    out = []
+    for feature, rows in tbl.groupby("feature", sort=False):
+        item = {"feature": feature}
+        for r in rows.to_dict("records"):
+            item[r["label"]] = {"q1": r["q1"], "median": r["median"], "q3": r["q3"], "low": r["whisker_low"],
+                                "high": r["whisker_high"], "mean": r["mean"], "count": int(r["count"])}
+        out.append(item)
+    return out
+
+
+def _correlation(outputs: Path) -> dict | None:
+    f = outputs / "eda_correlation.csv"
+    if not f.exists():
+        return None
+    tbl = pd.read_csv(f, index_col=0)
+    return {"features": list(tbl.columns), "matrix": tbl.round(3).to_numpy().tolist()}
+
+
+def _cluster_points(outputs: Path) -> list[dict] | None:
+    """The sample of attack prompts drawn on the cluster map: position, k-means and DBSCAN group, short text."""
+    f = outputs / "attack_clusters_2d.csv"
+    if not f.exists():
+        return None
+    tbl = pd.read_csv(f, keep_default_na=False)
+    return [{"x": float(r.x), "y": float(r.y), "kmeans": int(r.kmeans), "dbscan": int(r.dbscan), "text": str(r.text)}
+            for r in tbl.itertuples()]
+
+
 def _wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
     """95% confidence interval for a success rate of k out of n (Wilson score interval)."""
     if n == 0:
@@ -260,11 +285,12 @@ def _save_snapshot(snapshot: Path | None, value: dict) -> None:
 def build(outputs: Path, data_dirs: list[Path], deployed_meta: dict, snapshot: Path | None = None) -> dict:
     """The page's figures. `snapshot` is where the last complete results are kept between restarts."""
     files = [outputs / n for n in ("model_comparison.csv", "explanation_demo.csv", "dataset_summary.json",
-                                   "model_meta.json", "test_scores.csv", "kmeans_k_selection.csv")]
+                                   "model_meta.json", "test_scores.csv", "kmeans_k_selection.csv",
+                                   "eda_feature_boxes.csv", "eda_correlation.csv", "attack_clusters_2d.csv")]
     files += [d / n for d in data_dirs for n in ("dataset_clean.csv", "test.csv")]
 
     # The evasion files are measured after training, so they never count as a training run in progress.
-    measured = [outputs / f"evasion_{k}.json" for k in EVASION_RUNS] + [outputs / n for n in FIGURES]
+    measured = [outputs / f"evasion_{k}.json" for k in EVASION_RUNS]
     if _training_in_progress(outputs, files):
         previous = _cache["value"] or _load_snapshot(snapshot)
         if previous is not None:
@@ -322,7 +348,8 @@ def _build_now(outputs: Path, data_dirs: list[Path], deployed_meta: dict) -> dic
         "lengths": _lengths(data_dirs),
         "clusters": _clusters(outputs),
         "evasion": _evasion(outputs),
-        "figures": [{"name": n, "title": t, "text": d, "version": int(outputs.joinpath(n).stat().st_mtime)}
-                    for n, (t, d) in FIGURES.items() if (outputs / n).exists()],
+        "features": _feature_boxes(outputs),
+        "correlation": _correlation(outputs),
+        "cluster_points": _cluster_points(outputs),
     }
     return _clean(value)

@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { api, figureUrl } from '../api.js'
+import { api } from '../api.js'
 import ClusterChart from '../components/ClusterChart.jsx'
+import ClusterMap from '../components/ClusterMap.jsx'
+import CorrelationChart from '../components/CorrelationChart.jsx'
 import EvasionChart from '../components/EvasionChart.jsx'
 import ExportButtons from '../components/ExportButtons.jsx'
+import FeatureChart from '../components/FeatureChart.jsx'
 import LengthChart from '../components/LengthChart.jsx'
 import ThresholdExplorer from '../components/ThresholdExplorer.jsx'
 import { modelName, percent, ruleLabel } from '../format.js'
@@ -219,29 +222,6 @@ function Examples({ rows }) {
   )
 }
 
-function Figures({ figures }) {
-  return (
-    <section className="panel">
-      <h2 className="chart-title">More charts from the training run</h2>
-      <p className="chart-sub">Made by the training script and served from the outputs folder. Select a chart to open it full size.</p>
-      <div className="figure-grid">
-        {figures.map((f) => (
-          <figure key={f.name} className="output-figure">
-            <a href={figureUrl(f)} target="_blank" rel="noopener noreferrer">
-              <img src={figureUrl(f)} alt={`${f.title}. ${f.text}`} loading="lazy" />
-            </a>
-            <figcaption>
-              <strong>{f.title}</strong>
-              <span>{f.text}</span>
-              <ExportButtons imageUrl={figureUrl(f)} name={f.name.replace(/\.png$/, '')} title={f.title} />
-            </figcaption>
-          </figure>
-        ))}
-      </div>
-    </section>
-  )
-}
-
 export default function DataPage() {
   const [load, setLoad] = useState({ state: 'loading', stats: null, error: null })
 
@@ -345,9 +325,11 @@ export default function DataPage() {
               {stats.clusters && <ClusterChart clusters={stats.clusters} />}
             </div>
           )}
+          {stats.features && <FeatureChart features={stats.features} />}
+          {stats.correlation && <CorrelationChart correlation={stats.correlation} />}
+          {stats.cluster_points && <ClusterMap points={stats.cluster_points} totalAttacks={stats.dataset?.attacks} />}
           {stats.evasion && <EvasionChart evasion={stats.evasion} />}
           {stats.examples.length > 0 && <Examples rows={stats.examples} />}
-          {stats.figures.length > 0 && <Figures figures={stats.figures} />}
           <section className="panel">
             <h2 className="chart-title">Limits of this data</h2>
             <ul className="plain-list">

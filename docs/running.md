@@ -181,7 +181,9 @@ The **Our data** page reads these files from `outputs/` each time it loads, so i
 | `processed/dataset_clean.csv` | The prompt length chart |
 | `kmeans_k_selection.csv` | The attack groups chart |
 | `explanation_demo.csv` | Example outputs |
-| `eda_features_vs_label.png`, `eda_correlation.png`, `attack_clusters_2d.png` | More charts from the training run (shown as images) |
+| `eda_feature_boxes.csv` | The feature box plots (which features tell attacks apart) |
+| `eda_correlation.csv` | The feature correlation heatmap |
+| `attack_clusters_2d.csv` | The map of attack prompts, coloured by k-means or DBSCAN group |
 | `evasion_before.json`, `evasion_after_table.json`, `evasion_after.json` | The disguised attacks chart (written by the evasion demo in section 8, not by training) |
 
 The response time card is measured live from the checks the server has answered since it started.

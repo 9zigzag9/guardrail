@@ -422,13 +422,22 @@ def test_evasion_results_are_served(client):
     assert look["final"]["before"]["rate"] > look["final"]["after"]["rate"]
 
 
-def test_output_charts_are_served(client):
-    name = client.get("/api/model-stats").json()["figures"][0]["name"]
-    r = client.get(f"/api/outputs/{name}")
-    assert r.status_code == 200 and r.headers["content-type"] == "image/png" and r.content[:4] == b"\x89PNG"
+def test_feature_and_cluster_chart_data(client):
+    body = client.get("/api/model-stats").json()
+    attacks = body["dataset"]["attacks"]
+    for f in body["features"]:
+        for side in ("safe", "attack"):
+            b = f[side]
+            assert b["low"] <= b["q1"] <= b["median"] <= b["q3"] <= b["high"]
+        assert f["attack"]["count"] == attacks
+    corr = body["correlation"]
+    n = len(corr["features"])
+    assert len(corr["matrix"]) == n and all(corr["matrix"][i][i] == 1 for i in range(n))
+    points = body["cluster_points"]
+    assert 0 < len(points) <= attacks
+    assert {p["kmeans"] for p in points} <= set(range(body["clusters"]["best_k"]))   # groups 0 .. k-1
 
 
-@pytest.mark.parametrize("name", ["model_comparison.csv", "..%2Fbackend%2Fmodel_hashes.json", "confusion_matrices.png",
-                                  "..%5C..%5Cbackend%5Cmain.py", "nope.png", "%2E%2E%2Fprompt_injection_guardrail.py"])
-def test_only_listed_charts_can_be_fetched(client, name):
-    assert client.get(f"/api/outputs/{name}").status_code == 404
+def test_no_files_can_be_fetched_from_outputs(client):
+    # The page draws every chart from data now, so there is no endpoint that returns files.
+    assert client.get("/api/outputs/eda_correlation.png").status_code == 404

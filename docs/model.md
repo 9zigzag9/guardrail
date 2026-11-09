@@ -91,7 +91,8 @@ The deployed model's accuracy is 95.4% (3,625 of 3,670 safe prompts allowed and 
 | `test_scores.csv` | Every model's attack probability for each test prompt; the website draws its curves and threshold explorer from it |
 | `tuning_logistic.csv`, `tuning_linear_svm.csv`, `tuning_random_forest.csv` | Every hyperparameter combination tried, with its cross-validation scores |
 | `eda_balance_length.png`, `eda_features_vs_label.png`, `eda_correlation.png` | EDA charts |
-| `kmeans_k_selection.csv`, `kmeans_k_selection.png`, `attack_clusters_2d.png` | Attack clustering |
+| `eda_feature_boxes.csv`, `eda_correlation.csv` | The numbers behind the feature box plots and the correlation heatmap; the website draws them from these |
+| `kmeans_k_selection.csv`, `kmeans_k_selection.png`, `attack_clusters_2d.png`, `attack_clusters_2d.csv` | Attack clustering (the CSV is a fixed random sample of 3,000 attacks with their 2D position and groups, for the website) |
 | `run_complete.json` | Written last, when a training run has finished; the website waits for it before showing a new run |
 | `explanation_demo.csv` | `explain()` output for the PMP scenarios |
 | `dataset_summary.json` | Dataset size, prompts per source and attack types, for the website's Our data page |
