@@ -188,23 +188,28 @@ The model takes **raw text**: cleaning and feature building happen inside the pi
 
 ## 5. Run the web API (Assignment 3 back end)
 
+**Step-by-step instructions for running the whole app (setup, start, tests, retraining, demos, troubleshooting) are in
+[RUNNING.md](RUNNING.md).**
+
 From the repo root, with the environment from section 1 active (it installs `backend/requirements.txt` too):
 
 ```bash
-uvicorn backend.main:app --port 8000 --no-server-header
+python -m uvicorn backend.main:app --port 8000 --no-server-header
 ```
 
 `--no-server-header` stops uvicorn from announcing itself in every response.
 
 - API documentation with examples: http://localhost:8000/docs
 - `GET /api/health` reports the model and threshold; `POST /api/check` with `{"text": "..."}` checks one prompt;
-  `GET`/`DELETE /api/history` read and clear the session's past checks.
+  `GET`/`DELETE /api/history` read and clear the session's past checks; `GET /api/model-stats` returns the figures
+  for the Our data page, read live from `outputs/`, and `GET /api/outputs/{name}` serves its charts (a fixed list
+  of chart names only, so no other file can be requested).
 - Errors always come back as `{"error": {"code": "...", "message": "..."}}`.
 - The served model lives in `backend/model/`. At startup its SHA-256 hash is checked against `backend/model_hashes.json`
   and the server refuses to start on a mismatch.
 - Settings come from environment variables, listed with their defaults in `backend/.env.example`:
   `FRONTEND_ORIGINS`, `MAX_TEXT_CHARS`, `MAX_BODY_BYTES`, `INFERENCE_WORKERS`, `MAX_QUEUED`,
-  `INFERENCE_TIMEOUT_S`, `HISTORY_DB`, `HISTORY_KEEP`, `MODEL_DIR`, `ENABLE_DOCS`. No secrets are needed.
+  `INFERENCE_TIMEOUT_S`, `HISTORY_DB`, `HISTORY_KEEP`, `MODEL_DIR`, `OUTPUTS_DIR`, `ENABLE_DOCS`. No secrets are needed.
 - **Denial-of-service defence.** Inference runs in `INFERENCE_WORKERS` worker processes (`backend/inference.py`),
   never on the event loop, so one slow request cannot stall the others. At most `INFERENCE_WORKERS + MAX_QUEUED`
   checks are accepted at once; the next is refused immediately with `503` and `Retry-After: 1`. Two regular
@@ -271,6 +276,7 @@ Test set (6,401 prompts), each model at its own threshold chosen on the training
 | `eda_balance_length.png`, `eda_features_vs_label.png`, `eda_correlation.png` | EDA charts |
 | `kmeans_k_selection.png`, `attack_clusters_2d.png` | Attack clustering |
 | `explanation_demo.csv` | `explain()` output for the PMP scenarios |
+| `dataset_summary.json` | Dataset size, prompts per source and attack types, for the website's Our data page |
 
 ## Limitations
 

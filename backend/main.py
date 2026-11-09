@@ -15,8 +15,12 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import os
+import statistics
 import sys
+import time
+from collections import deque
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from contextlib import asynccontextmanager
@@ -26,7 +30,7 @@ from typing import Annotated, Literal
 from fastapi import FastAPI, Header, HTTPException, Path as PathParam, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -34,7 +38,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # so the imports below work whichever folder uvicorn is started from
 
-from backend import history, inference  # noqa: E402  (inference runs inside each worker process)
+from backend import history, inference, model_stats  # noqa: E402  (inference runs inside each worker process)
 
 log = logging.getLogger("guardrail")
 logging.basicConfig(level=logging.INFO)
@@ -60,10 +64,16 @@ INFERENCE_TIMEOUT_S = float(os.getenv("INFERENCE_TIMEOUT_S", "5"))
 HISTORY_DB = os.getenv("HISTORY_DB", str(ROOT / "backend" / "data" / "history.db"))
 # Newest checks kept per session; older ones are deleted, so no session can grow the database without limit.
 HISTORY_KEEP = int(os.getenv("HISTORY_KEEP", "200"))
+# Training outputs read by the Our data page. The training script writes here; the page updates on the next request.
+OUTPUTS_DIR = Path(os.getenv("OUTPUTS_DIR", ROOT / "outputs"))
+# Processed dataset, used only when outputs/dataset_summary.json is missing (runs made before it existed).
+DATA_DIRS = [OUTPUTS_DIR / "processed", ROOT / "data"]
 # crypto.randomUUID() in the browser makes exactly this shape (a version 4 UUID, lower case).
 SESSION_PATTERN = r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 
 state = {"in_flight": 0}  # model settings and the worker pool, set up once at startup
+# How long the most recent checks took (ms), for the live response time on the Our data page.
+recent_ms: deque[float] = deque(maxlen=500)
 
 
 def read_verified(name: str, expected: dict) -> bytes:
@@ -244,6 +254,86 @@ class HealthResponse(BaseModel):
     status: str
     model: str = Field(description="Which trained model is being served.")
     threshold: float = Field(description="Blocking threshold the model uses.")
+
+
+class SourceCount(BaseModel):
+    name: str
+    total: int
+    attacks: int
+    safe: int
+
+
+class AttackTypeCount(BaseModel):
+    category: str
+    count: int
+
+
+class DatasetStats(BaseModel):
+    rows: int
+    attacks: int
+    safe: int
+    sources: list[SourceCount]
+    attack_types: list[AttackTypeCount] = Field(description="Empty when the training run did not record attack types.")
+    test_rows: int | None = None
+    test_attacks: int | None = None
+
+
+class TestResults(BaseModel):
+    precision: float
+    recall: float
+    f1: float
+    roc_auc: float
+    pr_auc: float
+    fp: int = Field(description="Safe test prompts wrongly blocked.")
+    fn: int = Field(description="Test attacks missed.")
+    tp: int | None = None
+    tn: int | None = None
+    accuracy: float | None = None
+
+
+class ModelRow(BaseModel):
+    model: str
+    threshold: float
+    precision: float
+    recall: float
+    roc_auc: float
+    pr_auc: float
+    fp: int
+    fn: int
+
+
+class ExampleOutput(BaseModel):
+    scenario: str
+    text: str
+    decision: Literal["Attack", "Safe"]
+    probability: float
+    category: str | None
+
+
+class Figure(BaseModel):
+    name: str = Field(description="Fetch the image from /api/outputs/{name}.")
+    title: str
+    text: str
+    version: int = Field(description="Changes when the chart is regenerated, so browsers fetch the new image.")
+
+
+class Latency(BaseModel):
+    checks: int = Field(description="Checks measured since the server started (the most recent 500 at most).")
+    median_ms: float | None
+    p95_ms: float | None
+
+
+class ModelStatsResponse(BaseModel):
+    model: str = Field(description="The model answering /api/check.")
+    threshold: float
+    trained_at: int = Field(description="When the training outputs were written (Unix time).")
+    in_sync: bool = Field(description="False when the training outputs are from a different model than the deployed one.")
+    dataset: DatasetStats | None
+    test: TestResults | None
+    comparison: list[ModelRow]
+    examples: list[ExampleOutput]
+    figures: list[Figure]
+    latency: Latency
 
 
 class ErrorBody(BaseModel):
@@ -450,7 +540,9 @@ def to_segments(text: str, spans: list[dict]) -> list[dict]:
                      500: error_example("internal_error", "Something went wrong. Please try again."),
                      503: error_example("server_busy", BUSY_MESSAGE)})
 async def check(req: CheckRequest, session_id: OptionalSessionId = None):
+    started = time.perf_counter()
     r = await run_inference(req.text)
+    recent_ms.append((time.perf_counter() - started) * 1000)
     check_id = None
     if session_id:
         check_id = await run_in_threadpool(history.add_check, HISTORY_DB, session_id, req.text, r["decision"],
@@ -500,3 +592,33 @@ def get_history_item(session_id: SessionId, check_id: Annotated[int, PathParam(g
             description="Deletes every check saved under this X-Session-Id, and nothing else.")
 def clear_history(session_id: SessionId):
     return {"deleted": history.clear_checks(HISTORY_DB, session_id)}
+
+
+@app.get("/api/model-stats", response_model=ModelStatsResponse, tags=["model"],
+         summary="Dataset and model figures for the Our data page",
+         description="Read from the training outputs (outputs/) each time they change, so a new training run "
+                     "updates the page without rebuilding the front end. `latency` is measured live from recent checks.",
+         responses={503: error_example("stats_unavailable", "Model figures are not available yet. Run the training script.")})
+def get_model_stats():
+    try:
+        stats = model_stats.build(OUTPUTS_DIR, DATA_DIRS, state["meta"])
+    except FileNotFoundError as e:
+        log.warning("Model stats unavailable: %s", e)
+        return err(503, "stats_unavailable", "Model figures are not available yet. Run the training script.")
+    times = sorted(recent_ms)
+    latency = {"checks": len(times),
+               "median_ms": statistics.median(times) if times else None,
+               "p95_ms": times[max(0, math.ceil(len(times) * 0.95) - 1)] if times else None}
+    return {**stats, "latency": latency}
+
+
+@app.get("/api/outputs/{name}", tags=["model"], response_class=FileResponse,
+         summary="One chart from the training outputs",
+         description="Only the charts listed by /api/model-stats can be fetched; any other name answers 404.",
+         responses={200: {"content": {"image/png": {}}}, 404: error_example("http_error", "Resource not found.")})
+def get_output_figure(name: str):
+    # The name must be one of the fixed chart names, so no other file (or ../ path) can be reached.
+    path = OUTPUTS_DIR / name
+    if name not in model_stats.FIGURES or not path.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(path, media_type="image/png")

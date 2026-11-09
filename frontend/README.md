@@ -24,8 +24,7 @@ and edit `VITE_API_URL`.
 | `src/components/ErrorBoundary.jsx` | Fallback page for unexpected errors, so the screen is never blank |
 | `src/pages/NotFoundPage.jsx` | Page for addresses that do not exist |
 | `src/pages/AboutPage.jsx` | About the project and the team (team photos are the prototype's cat pictures) |
-| `src/pages/DataPage.jsx` | Our data: dataset sources, attack types, test results, model comparison, example outputs and charts from `outputs/` |
-| `src/data/modelStats.json` | Figures for the data page. Rebuild with `python make_data_page_stats.py . frontend/src/data/modelStats.json` from the project root while the back end is running |
+| `src/pages/DataPage.jsx` | Our data: dataset sources, attack types, test results, model comparison, example outputs and training charts. Everything is loaded from `GET /api/model-stats`, which reads `outputs/`, so a new training run shows up without rebuilding |
 
 The look (background, glass header and panels, gradient buttons, team cards) comes from the team's HTML prototype
 (COS30049_Website), with text colours darkened where needed to reach a 4.5:1 contrast ratio.

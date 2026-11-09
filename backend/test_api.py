@@ -305,3 +305,63 @@ def test_tampered_model_is_refused(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="Hash mismatch"):
         with TestClient(main.app):
             pass
+
+
+# ---------- Our data page: figures read live from the training outputs ----------
+
+def copy_outputs(tmp_path):
+    """A private copy of outputs/, so a test can change it like a new training run would."""
+    import shutil
+    out = tmp_path / "outputs"
+    shutil.copytree(main.OUTPUTS_DIR, out, ignore=shutil.ignore_patterns("*.joblib"))
+    return out
+
+
+def test_model_stats_describe_the_deployed_model(client):
+    r = client.get("/api/model-stats")
+    body = r.json()
+    assert r.status_code == 200
+    assert body["model"] == main.state["meta"]["model"] and body["in_sync"] is True
+    assert body["model"] in {m["model"] for m in body["comparison"]}
+    t, ds = body["test"], body["dataset"]
+    assert t["tp"] + t["fn"] == ds["test_attacks"] and t["tn"] + t["fp"] == ds["test_rows"] - ds["test_attacks"]
+    assert ds["rows"] == sum(s["total"] for s in ds["sources"])
+    assert body["figures"] and body["examples"]
+
+
+def test_latency_is_measured_from_real_checks(client):
+    before = client.get("/api/model-stats").json()["latency"]["checks"]
+    client.post("/api/check", json={"text": "What is the capital of France?"})
+    latency = client.get("/api/model-stats").json()["latency"]
+    assert latency["checks"] == before + 1 and latency["median_ms"] > 0
+
+
+def test_new_training_outputs_change_the_figures(client, tmp_path, monkeypatch):
+    out = copy_outputs(tmp_path)
+    monkeypatch.setattr(main, "OUTPUTS_DIR", out)
+    rows = (out / "model_comparison.csv").read_text().splitlines()
+    deployed = main.state["meta"]["model"]
+    # Pretend a new run moved the deployed model's threshold and missed 7 attacks.
+    new = [rows[0]] + [",".join([c[0], "0.5", *c[2:7], "7"]) if c[0] == deployed else ",".join(c)
+                       for c in (line.split(",") for line in rows[1:])]
+    (out / "model_comparison.csv").write_text("\n".join(new) + "\n")
+    body = client.get("/api/model-stats").json()
+    assert body["test"]["fn"] == 7
+    assert body["in_sync"] is False  # the page then tells the user the deployed model is older
+
+
+def test_missing_outputs_answer_503(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "OUTPUTS_DIR", tmp_path)
+    assert_error(client.get("/api/model-stats"), 503, "stats_unavailable")
+
+
+def test_output_charts_are_served(client):
+    name = client.get("/api/model-stats").json()["figures"][0]["name"]
+    r = client.get(f"/api/outputs/{name}")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png" and r.content[:4] == b"\x89PNG"
+
+
+@pytest.mark.parametrize("name", ["model_comparison.csv", "..%2Fbackend%2Fmodel_hashes.json",
+                                  "..%5C..%5Cbackend%5Cmain.py", "nope.png", "%2E%2E%2Fprompt_injection_guardrail.py"])
+def test_only_listed_charts_can_be_fetched(client, name):
+    assert client.get(f"/api/outputs/{name}").status_code == 404
