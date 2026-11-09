@@ -20,6 +20,7 @@ Sections, top to bottom:
   8. Explanation layer    attack category, highlighted words and a plain-language reason
 """
 import re
+import unicodedata
 import base64
 import codecs
 import math
@@ -70,6 +71,114 @@ IP_RE = re.compile(r'\b\d{1,3}(?:\.\d{1,3}){3}\b')
 # Letters separated by spaces or dots, at least 4 letters long.
 SPACED_RE = re.compile(r'\b(?:[A-Za-z] ){3,}[A-Za-z]\b')      # i g n o r e
 DOTTED_RE = re.compile(r'\b(?:[A-Za-z]\.){3,}[A-Za-z]\b')      # i.g.n.o.r.e
+
+
+# Look-alike letters from other scripts, mapped to the Latin letter they LOOK like (the idea behind the
+# "skeleton" in Unicode Technical Standard #39). unidecode alone is not enough: it transliterates by SOUND,
+# so Cyrillic 'р' (looks like p) becomes 'r' and "рrompt" reached the model as "rrompt". An attacker who
+# could see the confidence score used exactly this to get attacks through (demo_requests/evasion_attack.py).
+# TIGHT: practically identical to the Latin letter in common fonts.
+CONFUSABLES_TIGHT = {
+    # Cyrillic
+    'а': 'a', 'е': 'e', 'ё': 'e', 'о': 'o', 'р': 'p', 'с': 'c', 'у': 'y', 'х': 'x', 'і': 'i', 'ї': 'i', 'ј': 'j',
+    'ѕ': 's', 'һ': 'h', 'ԁ': 'd', 'ԛ': 'q', 'ԝ': 'w', 'ӏ': 'l',
+    'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K', 'М': 'M', 'Н': 'H', 'О': 'O', 'Р': 'P', 'С': 'C', 'Т': 'T',
+    'Х': 'X', 'У': 'Y', 'Ү': 'Y', 'Ѕ': 'S', 'І': 'I', 'Ӏ': 'I', 'Ј': 'J', 'Ԛ': 'Q', 'Ԝ': 'W',
+    # Greek
+    'α': 'a', 'ο': 'o', 'ρ': 'p', 'ν': 'v', 'ι': 'i', 'κ': 'k', 'χ': 'x', 'τ': 't', 'ϲ': 'c', 'ϳ': 'j',
+    'Α': 'A', 'Β': 'B', 'Ε': 'E', 'Ζ': 'Z', 'Η': 'H', 'Ι': 'I', 'Κ': 'K', 'Μ': 'M', 'Ν': 'N', 'Ο': 'O',
+    'Ρ': 'P', 'Τ': 'T', 'Υ': 'Y', 'Χ': 'X',
+    # Armenian
+    'օ': 'o', 'ս': 'u', 'ո': 'n', 'հ': 'h', 'ց': 'g', 'զ': 'q', 'Տ': 'S', 'Օ': 'O',
+    # Cherokee (capital look-alikes)
+    'Ꭺ': 'A', 'Ᏼ': 'B', 'Ꮯ': 'C', 'Ꭼ': 'E', 'Ꮋ': 'H', 'Ꭻ': 'J', 'Ꮶ': 'K', 'Ꮇ': 'M', 'Ꮲ': 'P', 'Ꮪ': 'S',
+    'Ꭲ': 'T', 'Ꮃ': 'W', 'Ꮓ': 'Z', 'Ꭰ': 'D', 'Ꮐ': 'G', 'Ꮮ': 'L', 'Ꮢ': 'R', 'Ꮩ': 'V',
+    # Latin letters that are not ASCII: small capitals and similar
+    'ı': 'i', 'ɑ': 'a', 'ɩ': 'i', 'ɡ': 'g', 'ʏ': 'y', 'ᴀ': 'a', 'ʙ': 'b', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ɢ': 'g',
+    'ʜ': 'h', 'ɪ': 'i', 'ᴊ': 'j', 'ᴋ': 'k', 'ʟ': 'l', 'ᴍ': 'm', 'ɴ': 'n', 'ᴏ': 'o', 'ᴘ': 'p', 'ʀ': 'r',
+    'ꜱ': 's', 'ᴛ': 't', 'ᴜ': 'u', 'ᴠ': 'v', 'ᴡ': 'w', 'ᴢ': 'z', 'ꞵ': 'b',
+}
+# LOOSE: resemble a Latin letter in some fonts but are common in real Russian and Greek words,
+# so they are only folded inside a word that also contains Latin letters.
+CONFUSABLES_LOOSE = {'п': 'n', 'и': 'u', 'в': 'b', 'н': 'h', 'г': 'r', 'ь': 'b', 'т': 't', 'м': 'm', 'к': 'k',
+                     'η': 'n', 'γ': 'y', 'ω': 'w', 'υ': 'u', 'ε': 'e', 'ա': 'w', 'ք': 'p'}
+CONFUSABLES_ALL = {**CONFUSABLES_TIGHT, **CONFUSABLES_LOOSE}
+
+
+def _fold_token(tok):
+    letters = [c for c in tok if c.isalpha()]
+    if not any(c in CONFUSABLES_ALL for c in letters):
+        return tok
+    if any(c.isascii() for c in letters):
+        # Latin and look-alike letters in one word: no real language writes words like that.
+        return ''.join(CONFUSABLES_ALL.get(c, c) for c in tok)
+    if all(c in CONFUSABLES_TIGHT for c in letters):
+        # A whole word spelt with near-identical look-alikes, e.g. "ѕуѕ" for "sys".
+        return ''.join(CONFUSABLES_TIGHT.get(c, c) for c in tok)
+    return tok  # a genuine word in another script (e.g. Russian "привет") is left alone
+
+
+# Symbols that stand in for letters: "l!ke", "r€veal", "prin+", "§ystem", "∂||" (all).
+SYMBOL_LOOKALIKES = {'€': 'e', '|': 'l', '!': 'i', '+': 't', '§': 's', '∂': 'a', '¢': 'c', 'ø': 'o'}
+NON_ASCII_SYMBOLS = '€§∂¢ø'          # never part of an English word, so a word made only of these is folded too
+
+
+def _fold_symbols(tok):
+    """Fold letter-like symbols inside one word, keeping the cases genuine text uses.
+
+    Kept: '!' unless a lowercase letter follows ("Hello!", "viewer!The"); '+' at the end of "C++" or "A+";
+    a word with no letters made only of ASCII symbols ("||" in a table). Trailing punctuation is kept as is.
+    """
+    m = re.match(r"""(.*?)([.,;:?)"']*)$""", tok, re.S)
+    core, tail = m.group(1), m.group(2)
+    if not any(c in SYMBOL_LOOKALIKES for c in core):
+        return tok
+    if not any(c.isascii() and c.isalpha() for c in core) and (
+            not any(c in NON_ASCII_SYMBOLS for c in core) or any(c.isdigit() for c in core)):
+        return tok                       # "||" in a table, "€10" as money
+    out = []
+    for i, c in enumerate(core):
+        nxt = core[i + 1] if i + 1 < len(core) else ''
+        prev2 = core[max(0, i - 2):i]
+        if c not in SYMBOL_LOOKALIKES or nxt.isdigit():
+            out.append(c)                    # "5€10", "a|1": a symbol next to a number is not a letter
+        elif c == '!' and not nxt.islower():
+            out.append(c)
+        elif c == '+' and not nxt.islower() and not (nxt == '' and len(prev2) == 2 and prev2.isalpha() and prev2.islower()):
+            out.append(c)                    # "C++", "A+", "x + y"; but "prin+" (two lowercase letters before) is folded
+        else:
+            out.append(SYMBOL_LOOKALIKES[c])
+    return ''.join(out) + tail
+
+
+def fold_confusables(s):
+    """Replace look-alike letters and symbols with the Latin letter they imitate, one word at a time.
+
+    'іgnоrе all рrеvіоus' (Cyrillic і о е р) becomes 'ignore all previous', and 'r€v€al' becomes 'reveal'.
+    Genuine Russian or Greek words are left for unidecode to transliterate as before.
+    """
+    return re.sub(r'\S+', lambda m: _fold_symbols(_fold_token(m.group(0))), s)
+
+
+def _is_other_script_letter(c):
+    """A real letter (not a modifier such as the IPA stress mark) from a script other than Latin."""
+    return (not c.isascii() and unicodedata.category(c) in ('Lu', 'Ll', 'Lt', 'Lo')
+            and not unicodedata.name(c, 'LATIN').startswith('LATIN'))
+
+
+def mixed_script_words(raw):
+    """(start, end) of every word that mixes Latin letters with letters from another script.
+
+    No language writes a word that way, so it is a sign of disguise even when the look-alike is not in
+    our table (for example a Lisu or Coptic letter). This is the mixed-script check that Unicode Technical
+    Standard #39 recommends, and that browsers use to catch spoofed web addresses.
+    """
+    out = []
+    for m in re.finditer(r'\S+', raw):
+        word = _fold_token(remove_zero_width(m.group(0)))
+        if any(c.isascii() and c.isalpha() for c in word) and any(_is_other_script_letter(c) for c in word):
+            out.append((m.start(), m.end()))
+    return out
 
 
 def remove_zero_width(s):
@@ -142,13 +251,15 @@ def try_rot13(s):
 def clean_text(s):
     """Run every cleaning step in order and return lowercase, single-spaced text.
 
-    The order matters: rot13 is checked on the whole message first, zero-width characters
-    are removed before anything looks at words, and leet is fixed last (after lowercasing).
+    The order matters: look-alike letters are folded first (otherwise the rot13 check below sees too few
+    English words and wrongly "decodes" the message), rot13 is then checked on the whole message, zero-width
+    characters are removed before anything looks at words, and leet is fixed last (after lowercasing).
     """
     s = str(s)
+    s = fold_confusables(s)                 # look-alike letters from other scripts -> the Latin letter they imitate
     s = try_rot13(s)
     s = remove_zero_width(s)
-    s = unidecode(s)                        # homoglyphs and accents
+    s = unidecode(s)                        # remaining accents and scripts, transliterated
     s = EMAIL_RE.sub(' emailaddr ', s)      # anonymisation
     s = IP_RE.sub(' ipaddr ', s)
     s = collapse_spaced_letters(s)
@@ -805,6 +916,16 @@ def explain(text, guardrail_pipe, threshold, category_pipe=None):
         if any(z in tok for z in ZERO_WIDTH) or try_base64_token(tok) != tok:
             spans.append((s, e, 'obfuscation'))
 
+    # 3d. words that mix alphabets (a disguise even when the look-alike letter is not in our table)
+    mixed = mixed_script_words(text)
+    for s, e in mixed:
+        spans.append((s, e, 'mixed_script'))
+    # Such a word is blocked even if the model's score is low: the attacker chose look-alikes the cleaning
+    # does not know, so the score cannot be trusted. Genuine text practically never does this.
+    blocked_by_mixed_script = bool(mixed) and decision == 'Safe'
+    if blocked_by_mixed_script:
+        decision = 'Attack'
+
     # Step 4: merge spans that overlap, so the highlight does not get nested brackets.
     spans.sort()
     merged = []
@@ -819,10 +940,10 @@ def explain(text, guardrail_pipe, threshold, category_pipe=None):
     category, category_conf = None, None
     if decision == 'Attack':
         all_hits = {n for _, _, names in merged for n in names}
-        priority = [name for name, _ in CATEGORY_RULES] + ['obfuscation']
+        priority = [name for name, _ in CATEGORY_RULES] + ['obfuscation', 'mixed_script']
         rule_hit = next((p for p in priority if p in all_hits), None)
         if rule_hit:
-            category = rule_hit
+            category = 'obfuscation' if rule_hit == 'mixed_script' else rule_hit
         elif category_pipe is not None:
             p = category_pipe.predict_proba(pd.DataFrame({'text': [text]}))[0]
             category = category_pipe.named_steps['model'].classes_[int(np.argmax(p))]
@@ -839,7 +960,10 @@ def explain(text, guardrail_pipe, threshold, category_pipe=None):
 
     # Step 7: a one-sentence, human-readable reason.
     reasons = sorted({n for _, _, names in merged for n in names})
-    if decision == 'Attack' and reasons:
+    if blocked_by_mixed_script:
+        explanation = (f'Blocked because some words mix letters from different alphabets, a common way to disguise '
+                       f'an attack. The model score alone was {proba:.0%}.')
+    elif decision == 'Attack' and reasons:
         explanation = f'Flagged as {category} because the text matched patterns for: {", ".join(reasons)}.'
     elif decision == 'Attack':
         explanation = f'Flagged as {category} by the overall model score, not a specific rule.'

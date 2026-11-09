@@ -9,6 +9,7 @@ const RULE_LABELS = {
   social_engineering: 'Social engineering',
   embedded_attack: 'Embedded attack',
   obfuscation: 'Disguised text',
+  mixed_script: 'Mixed alphabets in one word',
   unclassified: 'Other attack',
 }
 

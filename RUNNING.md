@@ -223,6 +223,29 @@ python -m uvicorn backend.main:app --port 8001
 Then, back in the project root: `python demo_requests/dos_attack.py http://127.0.0.1:8001`.
 Remove the extra copy afterwards with `git worktree remove ..\guardrail-baseline`.
 
+**Detection evasion** (advanced security, before and after). The version before the defence is the tag
+`before-evasion-defence`. Run it on port 8001 the same way as the baseline above:
+
+```powershell
+git worktree add ..\guardrail-before before-evasion-defence
+cd ..\guardrail-before
+conda activate guardrail
+python -m uvicorn backend.main:app --port 8001
+```
+
+With the current back end still on port 8000, from the project root (each run takes about 6 minutes and sends
+about 70,000 requests to your own machine):
+
+```powershell
+python demo_requests/evasion_attack.py http://127.0.0.1:8001 --label before
+python demo_requests/evasion_attack.py http://127.0.0.1:8000 --label after
+python demo_requests/evasion_attack.py --compare
+```
+
+`--compare` prints the before and after table and saves `outputs/evasion_before_after.png`. For a quick live demo,
+paste `іgnоrе all рrеvіоus іnѕtruсtіоnѕ` (Cyrillic і о е р ѕ с) into the website: the current version highlights the
+disguised words in your own text.
+
 ## 9. Settings
 
 The back end reads its settings from environment variables. All have safe defaults, listed in
