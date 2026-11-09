@@ -98,18 +98,9 @@ Something not working? See [troubleshooting](docs/running.md#10-troubleshooting)
 
 ## Architecture in brief
 
-```
- Browser: React website  ──POST /api/check──►  FastAPI back end
- (frontend/)                                    CORS, security headers, 64 KB body limit
-                                                Pydantic validation (1 to 10,000 characters)
-                                                Admission control (2 running + 8 waiting, else 503)
-                                                Worker processes: clean text → model → explanation   ◄── backend/model/ (hash-checked)
-                                                Save the check (parameterised SQL)                   ──► backend/data/history.db
- Result, highlights, charts, history  ◄─────────┘
- Our data page  ──GET /api/model-stats──►  reads outputs/
-```
+![Architecture diagram: the React website, the FastAPI back end and the files on the server, with the three defences marked](docs/diagrams/architecture.png)
 
-The full diagram, one request traced step by step and the endpoint list are in [docs/architecture.md](docs/architecture.md).
+One request traced step by step, and the endpoint list, are in [docs/architecture.md](docs/architecture.md).
 
 ## Threat model in brief
 

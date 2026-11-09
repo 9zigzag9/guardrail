@@ -18,34 +18,11 @@ The front end is React and the back end is FastAPI. The model is the logistic re
 
 ## Architecture diagram
 
-```
- Browser                          FastAPI back end (backend/)                         Files
- ─────────────────────            ──────────────────────────────────────────          ─────────────────────
- React front end (frontend/)      Middleware, outermost first:
-  PromptForm  validates input        CORS: only the front end origins
-  api.js      adds X-Session-Id      SecurityHeaders: CSP, nosniff, no-store, DENY
-              15 s time limit        BodySizeLimit: 64 KB, refused before reading
-       │                             CatchAllErrors: one JSON error format
-       │  POST /api/check                       │
-       │  {"text": "..."}                       ▼
-       └──────────────────────────► Pydantic CheckRequest (1 to 10,000 characters)
-                                                │
-                                    run_inference(): admission control             backend/model/
-                                     ≤ 2 running + 8 waiting, else 503             guardrail_model.joblib
-                                                │                                  category_model.joblib
-                                                ▼                                  (SHA-256 checked at startup
-                                    Worker process pool (backend/inference.py)      against model_hashes.json)
-                                     clean_text() → features → model.predict_proba
-                                     → threshold → explain()                        
-                                                │                                  backend/data/history.db
-                                    history.add_check() ── parameterised SQL ───►  (SQLite, per session)
-                                                │
-       ┌────────────────────────────────────────┘
-       ▼   CheckResponse: decision, confidence, category, segments, explanation
-  ResultCard, HighlightedText (plain text only), SessionChart, CategoryChart, HistoryPanel
+![Architecture diagram: the React website, the FastAPI back end and the files on the server, with the three defences marked](diagrams/architecture.png)
 
-  Our data page ── GET /api/model-stats, GET /api/outputs/{chart} ──► backend/model_stats.py ──► outputs/
-```
+The coloured tags show where each marked defence sits. The editable source is
+[diagrams/architecture.drawio](diagrams/architecture.drawio); open it at https://app.diagrams.net or in the draw.io
+desktop app.
 
 **One request, step by step**
 
