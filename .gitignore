@@ -9,3 +9,6 @@ node_modules/
 
 # runtime data (history of checks), never committed
 backend/data/
+
+# notebook runs (ml/outputs_notebook), never committed
+outputs_notebook/

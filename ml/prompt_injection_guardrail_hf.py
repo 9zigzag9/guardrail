@@ -9,9 +9,9 @@ prompt_injection_guardrail.py (imported as pig) one after another, printing what
 each step and saving every table, chart and model into the output folder (default: outputs/).
 
 Usage:
-  python prompt_injection_guardrail_hf.py
-  python prompt_injection_guardrail_hf.py --repos xTRam1/safe-guard-prompt-injection,deepset/prompt-injection
-  python prompt_injection_guardrail_hf.py --repos my_data.csv --fast      (csv needs text,label columns)
+  python ml/prompt_injection_guardrail_hf.py
+  python ml/prompt_injection_guardrail_hf.py --repos xTRam1/safe-guard-prompt-injection,deepset/prompt-injection
+  python ml/prompt_injection_guardrail_hf.py --repos my_data.csv --fast      (csv needs text,label columns)
 """
 import argparse
 import json

@@ -14,6 +14,6 @@ Unidecode==1.4.0
 # prompt_injection_guardrail imports these at module level (they draw the training charts)
 matplotlib==3.11.2
 seaborn==0.13.2
-# tests only (pytest backend/test_api.py)
+# tests only (python -m pytest)
 httpx==0.28.1
 pytest==9.1.1

@@ -5,5 +5,5 @@ dependencies:
   - python=3.14
   - pip
   - pip:
-      - -r requirements.txt
+      - -r ml/requirements.txt
       - -r backend/requirements.txt

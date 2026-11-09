@@ -1,4 +1,4 @@
-"""API tests. Run from the repo root:  pytest -q backend/test_api.py
+"""API tests. Run from the repo root:  python -m pytest -q tests/test_api.py
 
 They start the real app (real model, hash check included) inside the test process,
 so no server needs to be running."""

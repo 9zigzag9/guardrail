@@ -13,7 +13,8 @@ from pathlib import Path
 
 import joblib
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# The library lives in ml/. The saved models refer to it by module name, so ml/ goes on the path.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ml"))
 import prompt_injection_guardrail as pig  # noqa: E402  (must be imported before joblib.load)
 
 _model = None

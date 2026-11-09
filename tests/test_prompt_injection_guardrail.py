@@ -1,4 +1,4 @@
-"""Tests for the prompt injection guardrail. Run with:  pytest -q test_prompt_injection_guardrail.py
+"""Tests for the prompt injection guardrail. Run with:  python -m pytest -q tests/test_prompt_injection_guardrail.py (from the repo root)
 
 Every test trains on tiny hand-written datasets, so the whole file runs in seconds and needs
 no internet. The tests check three things:

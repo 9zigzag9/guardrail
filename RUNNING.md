@@ -110,11 +110,12 @@ automatically and never committed). Delete that file to start with an empty hist
 
 ## 6. Run the tests
 
-From the project root with the environment active. No server needs to be running.
+From the project root with the environment active. No server needs to be running. This runs all 80 tests in `tests/`
+(the settings are in `pytest.ini`).
 
 ```powershell
 conda activate guardrail
-python -m pytest -q backend/test_api.py test_prompt_injection_guardrail.py
+python -m pytest -q
 ```
 
 Front end lint and production build:
@@ -142,7 +143,7 @@ npm audit --omit=dev
 From the project root with the environment active:
 
 ```powershell
-python prompt_injection_guardrail_hf.py
+python ml/prompt_injection_guardrail_hf.py
 ```
 
 This downloads the four Hugging Face datasets, cleans them, tunes and tests three models, and writes
@@ -150,10 +151,10 @@ everything to `outputs/`. It takes a while; `--fast` uses 3-fold instead of 5-fo
 To retrain from the saved, already cleaned dataset instead of downloading:
 
 ```powershell
-python prompt_injection_guardrail_hf.py --repos data/dataset_clean.csv
+python ml/prompt_injection_guardrail_hf.py --repos data/dataset_clean.csv
 ```
 
-Run `python prompt_injection_guardrail_hf.py --help` for every option. A warning about `HF_TOKEN` is
+Run `python ml/prompt_injection_guardrail_hf.py --help` for every option. A warning about `HF_TOKEN` is
 normal; the datasets are public.
 
 ### 7.2 What updates on its own
