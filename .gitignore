@@ -2,3 +2,13 @@ __pycache__
 .pytest_cache
 outputs/processed
 node_modules/
+# local secrets and settings, never committed
+.env
+.env.*
+!.env.example
+
+# runtime data (history of checks), never committed
+backend/data/
+
+# notebook runs (ml/outputs_notebook), never committed
+outputs_notebook/

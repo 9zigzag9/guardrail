@@ -9,9 +9,9 @@ prompt_injection_guardrail.py (imported as pig) one after another, printing what
 each step and saving every table, chart and model into the output folder (default: outputs/).
 
 Usage:
-  python prompt_injection_guardrail_hf.py
-  python prompt_injection_guardrail_hf.py --repos xTRam1/safe-guard-prompt-injection,deepset/prompt-injection
-  python prompt_injection_guardrail_hf.py --repos my_data.csv --fast      (csv needs text,label columns)
+  python ml/prompt_injection_guardrail_hf.py
+  python ml/prompt_injection_guardrail_hf.py --repos xTRam1/safe-guard-prompt-injection,deepset/prompt-injection
+  python ml/prompt_injection_guardrail_hf.py --repos my_data.csv --fast      (csv needs text,label columns)
 """
 import argparse
 import json
@@ -83,7 +83,8 @@ def load_and_normalize(source):
     out = pd.DataFrame({
         'text': pdf[text_col].astype(str),
         'label': pdf[label_col].map(lambda v: int(str(v).lower() in ATTACK_LABELS)),
-        'source': source.split('/')[-1],
+        # A CSV made by this script (data/dataset_clean.csv) keeps its per-dataset source names.
+        'source': pdf['source'].astype(str) if 'source' in pdf.columns else source.split('/')[-1],
     })
     if cat_col:
         # Translate the dataset's own category names into our taxonomy (see pig.CATEGORY_ALIASES).
@@ -126,6 +127,20 @@ def fill_categories(df):
     return df
 
 
+def save_dataset_summary(df, y_test, outdir):
+    """Counts for the website's Our data page (backend/model_stats.py reads this file)."""
+    by_source = df.groupby('source')['label'].agg(['count', 'sum'])
+    types = df.loc[df['label'] == 1, 'category'].fillna('unclassified').value_counts()
+    summary = {
+        'rows': int(len(df)), 'attacks': int(df['label'].sum()),
+        'sources': [{'name': s, 'total': int(r['count']), 'attacks': int(r['sum'])} for s, r in by_source.iterrows()],
+        'attack_types': [{'category': c, 'count': int(n)} for c, n in types.items()],
+        'test_rows': int(len(y_test)), 'test_attacks': int(y_test.sum()),
+    }
+    with open(os.path.join(outdir, 'dataset_summary.json'), 'w', encoding='utf-8') as f:
+        json.dump(summary, f, indent=2)
+
+
 def main(sources, outdir='outputs', min_recall=0.90, folds=5, deploy='auto'):
     """Run every step of the workflow, top to bottom. Each log_step below is one stage."""
     os.makedirs(os.path.join(outdir, 'processed'), exist_ok=True)
@@ -158,6 +173,7 @@ def main(sources, outdir='outputs', min_recall=0.90, folds=5, deploy='auto'):
     X_train.assign(label=y_train).to_csv(os.path.join(outdir, 'processed', 'train.csv'), index=False)
     X_test.assign(label=y_test).to_csv(os.path.join(outdir, 'processed', 'test.csv'), index=False)
     print(f'Train {len(X_train)} | Test {len(X_test)} | attack rate train {y_train.mean():.3f} test {y_test.mean():.3f}')
+    save_dataset_summary(df, y_test, outdir)
     # Cross-validation: the training set is cut into `folds` parts; each part takes a turn as validation.
     cv = StratifiedKFold(folds, shuffle=True, random_state=42)
 
@@ -198,6 +214,9 @@ def main(sources, outdir='outputs', min_recall=0.90, folds=5, deploy='auto'):
     res.to_csv(os.path.join(outdir, 'model_comparison.csv'), index=False)
     print('\n', res.round(3).to_string(index=False))
     pig.save_eval_plots(probas, y_test, thresholds, outdir)
+    # Every model's test-set scores, so the website can draw the ROC and precision-recall curves and
+    # recalculate the confusion matrix at any threshold the user picks.
+    pd.DataFrame({'label': y_test.to_numpy(), **probas}).to_csv(os.path.join(outdir, 'test_scores.csv'), index=False)
     if 'logistic' in tuned:
         pig.top_terms(tuned['logistic'])
 
@@ -246,6 +265,11 @@ def main(sources, outdir='outputs', min_recall=0.90, folds=5, deploy='auto'):
     print('Saved guardrail_model.joblib, category_model.joblib (if trained) and model_meta.json. '
           'The FastAPI app must import prompt_injection_guardrail so the pipelines can load, and should call '
           'pig.explain(text, guardrail_model, threshold, category_model) to answer /predict.')
+
+    # Written last: it tells the website's Our data page that this run is complete. Until it exists,
+    # the page keeps showing the previous run's results instead of a mix of old and new files.
+    with open(os.path.join(outdir, 'run_complete.json'), 'w') as f:
+        json.dump({'finished_at': pd.Timestamp.now().isoformat(timespec='seconds'), 'model': deploy}, f, indent=2)
 
 
 if __name__ == '__main__':

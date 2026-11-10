@@ -1,0 +1,58 @@
+{
+  "rows": 32003,
+  "attacks": 13654,
+  "sources": [
+    {
+      "name": "Prompt-injection-dataset",
+      "total": 6102,
+      "attacks": 3565
+    },
+    {
+      "name": "prompt-injection-dataset",
+      "total": 15117,
+      "attacks": 6762
+    },
+    {
+      "name": "prompt-injections",
+      "total": 656,
+      "attacks": 258
+    },
+    {
+      "name": "safe-guard-prompt-injection",
+      "total": 10128,
+      "attacks": 3069
+    }
+  ],
+  "attack_types": [
+    {
+      "category": "unclassified",
+      "count": 11062
+    },
+    {
+      "category": "obfuscation",
+      "count": 990
+    },
+    {
+      "category": "instruction_override",
+      "count": 875
+    },
+    {
+      "category": "prompt_extraction",
+      "count": 544
+    },
+    {
+      "category": "role_jailbreak",
+      "count": 124
+    },
+    {
+      "category": "social_engineering",
+      "count": 42
+    },
+    {
+      "category": "embedded_attack",
+      "count": 17
+    }
+  ],
+  "test_rows": 6401,
+  "test_attacks": 2731
+}

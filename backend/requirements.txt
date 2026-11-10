@@ -1,0 +1,19 @@
+# Back-end (API) dependencies, pinned. Versions match requirements-frozen.txt, the full lock file.
+# scikit-learn must stay at 1.9.1: the saved .joblib models were created with it.
+fastapi==0.162.0
+starlette==1.10.0
+uvicorn==0.54.0
+pydantic==2.14.1
+pydantic_core==2.50.1
+scikit-learn==1.9.1
+scipy==1.18.1
+numpy==2.5.3
+pandas==3.0.6
+joblib==1.6.0
+Unidecode==1.4.0
+# prompt_injection_guardrail imports these at module level (they draw the training charts)
+matplotlib==3.11.2
+seaborn==0.13.2
+# tests only (python -m pytest)
+httpx==0.28.1
+pytest==9.1.1
