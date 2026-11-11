@@ -2,6 +2,8 @@
 
 **Session 11, Group 3:** Zahara Rashini Amarasiri Gunawardana, Le Thuy Duong Nguyen, Tomas Agustin Cornejo Beltran
 
+**Repository:** <https://github.com/9zigzag9/guardrail>
+
 A website that checks a prompt **before** it reaches an AI assistant and **allows** it or **blocks** it as a prompt injection, with the model's confidence, the words that triggered it and a one-line explanation. React front end, FastAPI back end, and the scikit-learn model from Assignment 2.
 
 ## Documentation
