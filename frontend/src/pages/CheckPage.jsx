@@ -22,11 +22,13 @@ export default function CheckPage() {
   const [category, setCategory] = useState(null)
   const [selected, setSelected] = useState({ id: null, detail: null, loading: false, error: null })
 
-  useEffect(() => {
+  const loadHealth = useCallback(() => {
     api.health()
       .then((h) => setHealth({ state: 'ok', ...h }))
       .catch((e) => setHealth({ state: 'down', message: e.message }))
   }, [])
+
+  useEffect(() => { loadHealth() }, [loadHealth])
 
   const refreshAll = useCallback(() => api.history().then((r) => setAllItems(r.items)).catch(() => {}), [])
 
@@ -66,10 +68,14 @@ export default function CheckPage() {
     try {
       const result = await api.check(text)
       setCheck({ state: 'success', result })
+      // The status pill only checks the server on page load, so refresh it once the server answers again.
+      if (health.state !== 'ok') loadHealth()
       await refreshAll()
       if (result.check_id) setSelected({ id: result.check_id, detail: null, loading: false, error: null })
     } catch (e) {
       setCheck({ state: 'error', error: e })
+      // A check that cannot reach the server means the "Server ready" pill is out of date.
+      if (e.code === 'network') setHealth({ state: 'down', message: e.message })
     }
   }
 
